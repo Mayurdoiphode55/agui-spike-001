@@ -42,7 +42,7 @@ graph TB
     end
 
     subgraph "LLM Layer"
-        Ollama[Ollama<br/>llama3.1:8b]
+        GroqAI[GroqAI API<br>llama3.1:8b]
         OpenAI[OpenAI API<br/>Alternative]
     end
 
@@ -56,9 +56,9 @@ graph TB
     Mastra --> MA
     CrewAI --> CA
     
-    LC --> Ollama
-    MA --> Ollama
-    CA --> Ollama
+    LC --> GroqAI
+    MA --> GroqAI
+    CA --> GroqAI
     
     LC -.->|Alternative| OpenAI
     MA -.->|Alternative| OpenAI
@@ -70,7 +70,7 @@ graph TB
     style LangChain fill:#e8f5e9
     style Mastra fill:#e8f5e9
     style CrewAI fill:#e8f5e9
-    style Ollama fill:#fce4ec
+    style GroqAI fill:#fce4ec
 ```
 
 ### Architecture Highlights
