@@ -1,0 +1,5 @@
+# LangChain Adapter Dependencies
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-groq>=0.1.0
+langgraph>=0.2.0
