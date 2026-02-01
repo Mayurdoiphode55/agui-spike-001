@@ -1,0 +1,42 @@
+services:
+  # Backend FastAPI Service
+  - type: web
+    name: agui-backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: AGUI_ADAPTER
+        value: langchain
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    
+  # Mastra Adapter Service
+  - type: web
+    name: agui-mastra
+    runtime: node
+    buildCommand: cd adapters/mastra && npm install && npm run build
+    startCommand: cd adapters/mastra && npm start
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: PORT
+        value: 8001
+    
+  # Frontend Static Site
+  - type: web
+    name: agui-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: https://agui-backend.onrender.com
+      - key: VITE_MASTRA_URL
+        value: https://agui-mastra.onrender.com
