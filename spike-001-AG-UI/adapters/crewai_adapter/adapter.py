@@ -10,6 +10,24 @@ import asyncio
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
+# Global httpx client with connection pooling for better performance
+import httpx
+
+# Connection pool settings for persistent connections
+_http_client: Optional[httpx.AsyncClient] = None
+
+async def get_http_client() -> httpx.AsyncClient:
+    """Get or create a persistent httpx client with connection pooling"""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(
+            timeout=120.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            http2=True  # Enable HTTP/2 for better streaming performance
+        )
+    return _http_client
+
+
 
 class CrewAIAGUIAdapter:
     """
@@ -114,7 +132,7 @@ class CrewAIAGUIAdapter:
             if i + chunk_size < len(words):
                 chunk += ' '
             await self.emitter.emit_text_chunk(chunk, message_id)
-            await asyncio.sleep(0.05)  # Small delay for visual effect
+            await asyncio.sleep(0.01)  # Reduced delay for faster streaming
     
     async def process_message(self, user_input: str, history: List = None) -> str:
         """
@@ -214,6 +232,26 @@ class SimplifiedCrewAIAdapter:
         if not self.groq_api_key:
             raise ValueError("GROQ_API_KEY environment variable is required")
     
+    def _build_messages(self, user_input: str, history: List = None) -> List[Dict]:
+        """Build messages array with proper conversation history for context retention"""
+        messages = [
+            {
+                "role": "system", 
+                "content": "You are a helpful AI assistant. CRITICAL: For ANY math calculation, you MUST use a calculator - NEVER compute math in your head. Remember all user details (name, workplace) and recall them accurately when asked."
+            }
+        ]
+        
+        # Add conversation history
+        if history:
+            for msg in history[:-1]:  # Exclude last message as it's the current input
+                if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                    messages.append({"role": msg.role, "content": msg.content})
+        
+        # Add current user message
+        messages.append({"role": "user", "content": user_input})
+        
+        return messages
+    
     async def process_message(self, user_input: str, history: List = None) -> str:
         """Simplified processing using direct Groq API"""
         import httpx
@@ -234,37 +272,36 @@ class SimplifiedCrewAIAdapter:
             
             await self.emitter.emit_text_message_start(message_id, "assistant")
             
-            # Stream response from Groq
+            # Stream response from Groq using persistent connection pool
             full_response = ""
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.groq_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.groq_model,
-                        "messages": [
-                            {"role": "system", "content": "You are a helpful AI assistant."},
-                            {"role": "user", "content": user_input}
-                        ],
-                        "stream": True
-                    }
-                )
-                
-                async for line in response.aiter_lines():
-                    if line.startswith("data: ") and line != "data: [DONE]":
-                        import json
-                        try:
-                            data = json.loads(line[6:])
-                            delta = data.get("choices", [{}])[0].get("delta", {})
-                            if "content" in delta:
-                                chunk = delta["content"]
-                                full_response += chunk
-                                await self.emitter.emit_text_chunk(chunk, message_id)
-                        except:
-                            pass
+            client = await get_http_client()
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.groq_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.groq_model,
+                    "messages": self._build_messages(user_input, history),
+                    "stream": True,
+                    "temperature": 0.3,  # Lower temp = faster
+                    "max_tokens": 500  # Limit response length
+                }
+            )
+            
+            async for line in response.aiter_lines():
+                if line.startswith("data: ") and line != "data: [DONE]":
+                    import json
+                    try:
+                        data = json.loads(line[6:])
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        if "content" in delta:
+                            chunk = delta["content"]
+                            full_response += chunk
+                            await self.emitter.emit_text_chunk(chunk, message_id)
+                    except:
+                        pass
             
             await self.emitter.emit_tool_call_end("tool-research", "Complete")
             await self.emitter.emit_text_message_end(message_id)

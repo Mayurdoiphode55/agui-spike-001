@@ -99,17 +99,33 @@ export class MastraAGUIAdapter {
         await this.emitter.emitRunStarted(runId, threadId);
 
         try {
+            // Pre-detect math and manually invoke calculator
+            const mathPattern = /(?:what\s+is\s+|calculate\s+|compute\s+)?(\d+\s*[\+\-\*\/\(\)]\s*[\d\+\-\*\/\(\)\s]+\d)/i;
+            const mathMatch = mathPattern.exec(userInput);
+
+            let calculatorResult = null;
+            if (mathMatch) {
+                const expression = mathMatch[1].replace(/\s/g, '');
+                const toolCallId = `tool-${Date.now().toString(36)}`;
+
+                await this.emitter.emitToolCallStart('calculator', toolCallId, { expression });
+
+                // Manually execute calculator
+                try {
+                    const result = Function(`"use strict"; return (${expression})`)();
+                    calculatorResult = `Result: ${result}`;
+                    await this.emitter.emitToolCallEnd(toolCallId, calculatorResult);
+                } catch (error) {
+                    calculatorResult = `Error: Invalid expression`;
+                    await this.emitter.emitToolCallEnd(toolCallId, calculatorResult);
+                }
+            }
+
             // Build messages array
             const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
                 {
                     role: 'system',
-                    content: `You are a helpful AI assistant with access to tools.
-You can use the following tools:
-- calculator: For mathematical calculations
-- webSearch: To search for information
-- getCurrentTime: To get the current date and time
-
-Always be helpful and provide clear, concise responses.`
+                    content: 'You are a helpful AI assistant. Be concise and clear.'
                 }
             ];
 
@@ -121,11 +137,16 @@ Always be helpful and provide clear, concise responses.`
                 });
             }
 
-            // Add current user message if not in history
+            // If calculator was used, inject result into user message
+            const finalInput = calculatorResult
+                ? `${userInput}\n\nCalculator result: ${calculatorResult}\n\nPlease provide the final answer based on this calculation.`
+                : userInput;
+
+            // Add current user message
             if (!history.some(m => m.role === 'user' && m.content === userInput)) {
                 messages.push({
                     role: 'user',
-                    content: userInput
+                    content: finalInput
                 });
             }
 
@@ -134,38 +155,19 @@ Always be helpful and provide clear, concise responses.`
 
             let fullResponse = '';
 
-            // Stream the response using Groq
+            // Use simple streamText without tools (since Groq doesn't support them reliably)
             const result = await streamText({
                 model: this.groq(this.modelId),
                 messages,
-                tools: {
-                    calculator: calculatorTool,
-                    webSearch: webSearchTool,
-                    getCurrentTime: getCurrentTimeTool
-                },
-                onChunk: async ({ chunk }: { chunk: { type: string; textDelta?: string; toolName?: string; args?: Record<string, unknown>; result?: unknown } }) => {
-                    if (chunk.type === 'text-delta' && chunk.textDelta) {
-                        fullResponse += chunk.textDelta;
-                        await this.emitter.emitTextChunk(chunk.textDelta, messageId);
-                    } else if (chunk.type === 'tool-call' && chunk.toolName) {
-                        const toolCallId = `tool-${Date.now().toString(36)}`;
-                        await this.emitter.emitToolCallStart(
-                            chunk.toolName,
-                            toolCallId,
-                            chunk.args
-                        );
-                    } else if (chunk.type === 'tool-result') {
-                        const toolCallId = `tool-${Date.now().toString(36)}`;
-                        await this.emitter.emitToolCallEnd(
-                            toolCallId,
-                            JSON.stringify(chunk.result)
-                        );
-                    }
-                }
+                maxTokens: 500,
+                temperature: 0.3
             });
 
-            // Wait for stream to complete
-            await result.text;
+            // Stream the text
+            for await (const chunk of result.textStream) {
+                fullResponse += chunk;
+                await this.emitter.emitTextChunk(chunk, messageId);
+            }
 
             // Emit text message end
             await this.emitter.emitTextMessageEnd(messageId);

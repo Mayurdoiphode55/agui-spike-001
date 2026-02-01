@@ -162,8 +162,9 @@ class LangChainAGUIAdapter:
         self.llm = ChatGroq(
             api_key=groq_api_key,
             model=groq_model,
-            temperature=0.7,
-            streaming=True
+            temperature=0.3,  # Lower temp = faster, more deterministic
+            streaming=True,
+            max_tokens=500  # Limit response length for faster completion
         )
         
         self.llm_with_tools = self.llm.bind_tools(self.tools)
@@ -232,21 +233,15 @@ class LangChainAGUIAdapter:
         
         messages = []
         
-        messages.append(SystemMessage(content="""You are a helpful AI assistant with access to tools.
+        # System prompt with mandatory tool usage for math
+        messages.append(SystemMessage(content="""You are a helpful AI assistant. 
 
-IMPORTANT: You have UI control tools! When the user asks to change the UI, USE THESE TOOLS:
-- change_background_color(color): Change background to any CSS color (blue, red, #ff5500, etc.)
-- change_theme(theme): Switch between 'dark' and 'light' theme
-- show_notification(message, type): Show a notification (types: info, success, warning, error)
-- reset_ui(): Reset UI to default state
+CRITICAL RULES:
+1. For ANY math calculation, you MUST use the calculator tool. NEVER compute math in your head - always use the tool.
+2. Remember all user details (name, workplace) and recall them when asked.
+3. Use UI tools (change_background_color, change_theme, show_notification, reset_ui) when asked.
 
-Other tools:
-- calculator: For mathematical calculations
-- web_search: To search for information
-- get_current_time: To get the current date and time
-
-When the user asks to change colors, themes, or show messages - USE THE UI TOOLS! 
-Always confirm what you did after using a UI tool."""))
+Available tools: calculator, web_search, get_current_time, change_background_color, change_theme, show_notification, reset_ui."""))
         
         if history:
             for msg in history[:-1]:
