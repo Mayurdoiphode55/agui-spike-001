@@ -147,6 +147,24 @@ const WS_URL = import.meta.env.PROD
 
 ## Troubleshooting
 
+### Issue: LangChain/CrewAI adapters not working, but Mastra works
+
+**Cause:** Frontend not connecting to backend due to missing or incorrect environment variables.
+
+**Solution:**
+1. In Render dashboard, go to `agui-frontend` service
+2. Click "Environment" tab
+3. Verify these variables exist with correct URLs:
+   ```
+   VITE_BACKEND_URL=https://agui-backend-XXXX.onrender.com
+   VITE_MASTRA_URL=https://agui-mastra-XXXX.onrender.com
+   ```
+4. After adding/updating env vars, click "Manual Deploy" → "Clear build cache & deploy"
+5. Wait for rebuild to complete (~2-3 min)
+6. Test all three adapters
+
+**Why this happens:** Vite requires environment variables to be set at BUILD time. Changing env vars doesn't update the deployed app until you rebuild.
+
 ### Backend won't start
 - Check Python version is 3.11+
 - Verify all dependencies in requirements.txt
