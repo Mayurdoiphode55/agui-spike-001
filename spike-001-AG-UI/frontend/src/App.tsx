@@ -73,12 +73,16 @@ function App() {
         metrics
     } = useAGUI(apiEndpoint, uiActions);
 
-    // Handle backend switch
+    // Handle backend switch - use environment variables for production
     useEffect(() => {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+        const mastraUrl = import.meta.env.VITE_MASTRA_URL || 'http://localhost:8001';
+
         if (backendType === 'mastra') {
-            setApiEndpoint('http://localhost:8001/api/copilotkit');
+            setApiEndpoint(`${mastraUrl}/api/copilotkit`);
         } else {
-            setApiEndpoint('/api/copilotkit');
+            // LangChain and CrewAI both use the main backend
+            setApiEndpoint(`${backendUrl}/api/copilotkit`);
         }
     }, [backendType]);
 
