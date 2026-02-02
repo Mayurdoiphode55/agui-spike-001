@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { AGUIMessage } from '../hooks/useAGUI';
 import WeatherCard from './WeatherCard';
+import TaskChecklist from './TaskChecklist';
 
 interface ChatInterfaceProps {
     messages: AGUIMessage[];
@@ -27,7 +28,19 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
     // Focus input on mount
     useEffect(() => {
         inputRef.current?.focus();
-    }, []);
+
+        // Listen for actions from components
+        const handleComponentAction = (e: CustomEvent) => {
+            if (e.detail && e.detail.action === 'sendMessage') {
+                onSendMessage(e.detail.content);
+            }
+        };
+
+        window.addEventListener('agui-action', handleComponentAction as EventListener);
+        return () => {
+            window.removeEventListener('agui-action', handleComponentAction as EventListener);
+        };
+    }, [onSendMessage]);
 
     const handleSend = async () => {
         if (!input.trim() || isStreaming) return;
@@ -77,6 +90,11 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                                 {msg.component && msg.component.type === 'WeatherCard' && (
                                     <div className="mt-4 mb-4">
                                         <WeatherCard data={msg.component.data} />
+                                    </div>
+                                )}
+                                {msg.component && msg.component.type === 'TaskChecklist' && (
+                                    <div className="mt-4 mb-4">
+                                        <TaskChecklist data={msg.component.data} />
                                     </div>
                                 )}
 

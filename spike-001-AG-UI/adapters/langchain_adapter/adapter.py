@@ -175,6 +175,65 @@ def get_weather(location: str) -> str:
     return f"COMPONENT:WeatherCard:{json.dumps(data)}"
 
 
+@tool
+def create_plan(topic: str) -> str:
+    """
+    Create a step-by-step plan for a complex task.
+    RENDERER: TaskChecklist
+    Use this when the user asks to plan something (e.g., "Plan a trip", "How do I build a house").
+    
+    Args:
+        topic: The topic to plan for
+    """
+    import uuid
+    import json
+    
+    topic_lower = topic.lower()
+    tasks = []
+    title = f"Plan: {topic}"
+    
+    if "mars" in topic_lower:
+        title = "Mission to Mars: Implementation Plan"
+        tasks = [
+            {"id": "1", "label": "Research Mars mission requirements", "checked": True},
+            {"id": "2", "label": "Select spacecraft and technology", "checked": True},
+            {"id": "3", "label": "Plan launch window and trajectory", "checked": True},
+            {"id": "4", "label": "Prepare supplies and equipment", "checked": True},
+            {"id": "5", "label": "Select and train crew members", "checked": False},
+        ]
+    elif "trip" in topic_lower or "vacation" in topic_lower:
+        title = f"Trip Plan: {topic}"
+        tasks = [
+            {"id": "1", "label": "Determine budget and dates", "checked": True},
+            {"id": "2", "label": "Book flights", "checked": True},
+            {"id": "3", "label": "Reserve accommodation", "checked": False},
+            {"id": "4", "label": "Plan daily itinerary", "checked": False},
+            {"id": "5", "label": "Pack luggage", "checked": False},
+        ]
+    elif "app" in topic_lower or "code" in topic_lower:
+        title = "Software Development Plan"
+        tasks = [
+            {"id": "1", "label": "Define requirements and scope", "checked": True},
+            {"id": "2", "label": "Design architecture", "checked": True},
+            {"id": "3", "label": "Set up project structure", "checked": False},
+            {"id": "4", "label": "Implement core features", "checked": False},
+            {"id": "5", "label": "Test and deploy", "checked": False},
+        ]
+    else:
+        title = f"Plan for: {topic}"
+        tasks = [
+            {"id": "1", "label": "Initial research and analysis", "checked": True},
+            {"id": "2", "label": "Define strategy and goals", "checked": True},
+            {"id": "3", "label": "Execute phase 1", "checked": False},
+            {"id": "4", "label": "Review progress", "checked": False},
+            {"id": "5", "label": "Finalize and deliver", "checked": False},
+        ]
+        
+    data = {"title": title, "tasks": tasks}
+    return f"COMPONENT:TaskChecklist:{json.dumps(data)}"
+
+
+
 
 @tool
 def show_notification(message: str, notification_type: str = "info") -> str:
@@ -220,6 +279,7 @@ class LangChainAGUIAdapter:
             web_search, 
             get_current_time,
             get_weather,  # New tool for backend rendering
+            create_plan,  # New tool for Human in the Loop
             # UI Action tools
             change_background_color,
             change_theme,
@@ -311,11 +371,12 @@ class LangChainAGUIAdapter:
         messages.append(SystemMessage(content="""You are a helpful AI assistant. 
 
 CRITICAL RULES:
-1. For ANY math calculation, you MUST use the calculator tool. NEVER compute math in your head - always use the tool.
-2. Remember all user details (name, workplace) and recall them when asked.
-3. Use UI tools (change_background_color, change_theme, show_notification, reset_ui) when asked.
+1. For ANY math calculation, you MUST use the calculator tool. NEVER compute math in your head.
+2. If asked about weather, use the get_weather tool.
+3. If asked to PLAN something (like a trip, project, or mission), use the create_plan tool.
+4. Use UI tools (change_background_color, change_theme, show_notification, reset_ui) when appropriate.
 
-Available tools: calculator, web_search, get_current_time, change_background_color, change_theme, show_notification, reset_ui."""))
+Available tools: calculator, web_search, get_current_time, get_weather, create_plan, change_background_color, change_theme, show_notification, reset_ui."""))
         
         if history:
             for msg in history[:-1]:
