@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { AGUIMessage } from '../hooks/useAGUI';
+import WeatherCard from './WeatherCard';
 
 interface ChatInterfaceProps {
     messages: AGUIMessage[];
@@ -63,14 +64,21 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                         >
                             <div
                                 className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                        ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-tr-sm'
-                                        : 'glass rounded-tl-sm'
+                                    ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-tr-sm'
+                                    : 'glass rounded-tl-sm'
                                     }`}
                             >
                                 {/* Role indicator */}
                                 <div className={`text-xs mb-1 ${msg.role === 'user' ? 'text-primary-200' : 'text-gray-500'}`}>
                                     {msg.role === 'user' ? 'You' : '🤖 Assistant'}
                                 </div>
+
+                                {/* Component Rendering */}
+                                {msg.component && msg.component.type === 'WeatherCard' && (
+                                    <div className="mt-4 mb-4">
+                                        <WeatherCard data={msg.component.data} />
+                                    </div>
+                                )}
 
                                 {/* Message content */}
                                 <div className="whitespace-pre-wrap break-words">
@@ -137,8 +145,8 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                             onClick={handleSend}
                             disabled={!input.trim() || isStreaming}
                             className={`px-4 py-2 rounded-xl font-medium transition-all ${input.trim() && !isStreaming
-                                    ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white hover:shadow-lg hover:shadow-primary-500/30'
-                                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                                ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white hover:shadow-lg hover:shadow-primary-500/30'
+                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                                 }`}
                         >
                             {isStreaming ? (
@@ -153,7 +161,7 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

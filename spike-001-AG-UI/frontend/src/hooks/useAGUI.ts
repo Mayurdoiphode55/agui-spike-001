@@ -12,6 +12,10 @@ export interface AGUIMessage {
     content: string;
     timestamp: Date;
     isComplete: boolean;
+    component?: {
+        type: string;
+        data: any;
+    };
 }
 
 export interface ToolCall {
@@ -195,11 +199,34 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
                     setTimeout(() => setActiveTool(null), 1000);
                     break;
 
-                case 'TOOL_CALL_RESULT':
                     setActiveTool(prev => prev ? {
                         ...prev,
                         result: data.result
                     } : null);
+
+                    // Check for Component Protocol
+                    const resultStr = data.result as string;
+                    if (resultStr && resultStr.startsWith('COMPONENT:')) {
+                        try {
+                            const [_, type, jsonStr] = resultStr.split('COMPONENT:')[1].split(/:(.+)/);
+                            const componentData = JSON.parse(jsonStr);
+
+                            // Add a new message to display this component
+                            setMessages(prev => [...prev, {
+                                id: `comp-${Date.now()}`,
+                                role: 'assistant',
+                                content: '', // Empty content, just component
+                                timestamp: new Date(),
+                                isComplete: true,
+                                component: {
+                                    type: type.trim(),
+                                    data: componentData
+                                }
+                            }]);
+                        } catch (e) {
+                            console.error('Failed to parse component data:', e);
+                        }
+                    }
                     break;
 
                 // UI Action events - execute frontend actions

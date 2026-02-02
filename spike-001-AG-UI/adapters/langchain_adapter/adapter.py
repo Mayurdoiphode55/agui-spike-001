@@ -104,6 +104,79 @@ def change_theme(theme: str) -> str:
 
 
 @tool
+def get_weather(location: str) -> str:
+    """
+    Get current weather for a location.
+    Returns rich data suitable for rendering a weather card.
+    
+    Args:
+        location: City name or location, e.g. "New York", "Mumbai", "London"
+    """
+    # Mock data with realistic variations based on location content
+    loc_lower = location.lower()
+    
+    # Default values (Nice sunny day)
+    temp = 22
+    condition = "Sunny"
+    humidity = 45
+    wind = 12
+    feels_like = 24
+    
+    if "mumbai" in loc_lower:
+        temp = 32
+        condition = "Humid"
+        humidity = 85
+        wind = 8
+        feels_like = 38
+        is_day = False # It's night in the demo maybe?
+    elif "london" in loc_lower:
+        temp = 15
+        condition = "Cloudy"
+        humidity = 60
+        wind = 18
+        feels_like = 14
+        is_day = True
+    elif "new york" in loc_lower:
+        temp = 18
+        condition = "Partly Cloudy"
+        humidity = 55
+        wind = 22
+        feels_like = 17
+        is_day = True
+    elif "snow" in loc_lower or "antarctica" in loc_lower:
+        temp = -5
+        condition = "Snowy"
+        humidity = 80
+        wind = 30
+        feels_like = -12
+        is_day = True
+    elif "rain" in loc_lower:
+        temp = 20
+        condition = "Rainy"
+        humidity = 90
+        wind = 15
+        feels_like = 19
+        is_day = False
+    else:
+        is_day = True
+
+    import json
+    data = {
+        "location": location.title(),
+        "temperature": temp,
+        "condition": condition,
+        "humidity": humidity,
+        "windSpeed": wind,
+        "feelsLike": feels_like,
+        "isDay": is_day
+    }
+    
+    # Return special COMPONENT prefix for frontend to detect
+    return f"COMPONENT:WeatherCard:{json.dumps(data)}"
+
+
+
+@tool
 def show_notification(message: str, notification_type: str = "info") -> str:
     """
     Show a notification message to the user in the UI.
@@ -146,6 +219,7 @@ class LangChainAGUIAdapter:
             calculator, 
             web_search, 
             get_current_time,
+            get_weather,  # New tool for backend rendering
             # UI Action tools
             change_background_color,
             change_theme,
