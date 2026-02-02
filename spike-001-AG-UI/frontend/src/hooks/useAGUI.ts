@@ -165,10 +165,40 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
                         const updated = [...prev];
                         const lastIdx = updated.length - 1;
                         if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-                            updated[lastIdx] = {
-                                ...updated[lastIdx],
-                                isComplete: true
-                            };
+                            const content = updated[lastIdx].content;
+
+                            // Check if content is a COMPONENT response
+                            if (content.startsWith('COMPONENT:')) {
+                                try {
+                                    // Parse: COMPONENT:ComponentType:{json}
+                                    const afterPrefix = content.substring('COMPONENT:'.length);
+                                    const colonIdx = afterPrefix.indexOf(':');
+                                    const componentType = afterPrefix.substring(0, colonIdx);
+                                    const jsonStr = afterPrefix.substring(colonIdx + 1);
+                                    const componentData = JSON.parse(jsonStr);
+
+                                    updated[lastIdx] = {
+                                        ...updated[lastIdx],
+                                        content: '', // Clear raw JSON from display
+                                        isComplete: true,
+                                        component: {
+                                            type: componentType,
+                                            data: componentData
+                                        }
+                                    };
+                                } catch (e) {
+                                    console.error('Failed to parse component:', e);
+                                    updated[lastIdx] = {
+                                        ...updated[lastIdx],
+                                        isComplete: true
+                                    };
+                                }
+                            } else {
+                                updated[lastIdx] = {
+                                    ...updated[lastIdx],
+                                    isComplete: true
+                                };
+                            }
                         }
                         return updated;
                     });

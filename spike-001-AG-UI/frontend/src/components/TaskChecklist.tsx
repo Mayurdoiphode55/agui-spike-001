@@ -32,10 +32,12 @@ const TaskChecklist: React.FC<TaskChecklistProps> = ({ data, onConfirm, onReject
             onConfirm(tasks.filter(t => t.checked));
         }
 
+        // Send structured execution command
+        const selectedSteps = tasks.filter(t => t.checked).map(t => t.label);
         const event = new CustomEvent('agui-action', {
             detail: {
                 action: 'sendMessage',
-                content: `Plan approved! Selected steps: ${tasks.filter(t => t.checked).map(t => t.label).join(', ')}`
+                content: `EXECUTE_PLAN:${data.title}:${JSON.stringify(selectedSteps)}`
             }
         });
         window.dispatchEvent(event);
