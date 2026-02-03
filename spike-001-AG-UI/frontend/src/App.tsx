@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import ChatInterface from './components/ChatInterface';
 import ToolStatus from './components/ToolStatus';
 import StatusBar from './components/StatusBar';
-import { useAGUI } from './hooks/useAGUI';
+import RecipeCreator from './components/RecipeCreator';
+import { useAGUI, RecipeState } from './hooks/useAGUI';
 
 // UI State that can be controlled by AI
 interface UIState {
@@ -19,6 +20,17 @@ interface UIState {
 function App() {
     const [backendType, setBackendType] = useState<'langchain' | 'mastra' | 'crewai'>('langchain');
     const [apiEndpoint, setApiEndpoint] = useState('/api/copilotkit');
+    const [activeView, setActiveView] = useState<'chat' | 'recipe'>('chat');
+
+    // Recipe state for shared state feature
+    const [recipeState, setRecipeState] = useState<RecipeState>({
+        cookingTime: 30,
+        skillLevel: 'intermediate',
+        dietaryPreferences: [],
+        ingredients: [],
+        instructions: [''],
+        title: 'My Recipe'
+    });
 
     // UI State controlled by AI actions
     const [uiState, setUIState] = useState<UIState>({
@@ -59,6 +71,12 @@ function App() {
                 theme: 'dark',
                 notification: null
             });
+        }, []),
+
+        // Update recipe state from AI
+        updateRecipeState: useCallback((state: RecipeState) => {
+            console.log('🍳 AI updating recipe state:', state);
+            setRecipeState(prev => ({ ...prev, ...state }));
         }, [])
     };
 
@@ -69,9 +87,16 @@ function App() {
         activeTool,
         error,
         sendMessage,
+        sendRecipeImproveRequest,
         clearMessages,
-        metrics
+        metrics,
+        isImprovingRecipe
     } = useAGUI(apiEndpoint, uiActions);
+
+    // Handle recipe improve request
+    const handleRecipeImprove = useCallback((state: RecipeState) => {
+        sendRecipeImproveRequest(state);
+    }, [sendRecipeImproveRequest]);
 
     // Handle backend switch - use environment variables for production
     useEffect(() => {
@@ -174,40 +199,84 @@ function App() {
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4 py-6">
-                {/* UI Actions Info */}
-                <div className={`mb-4 p-3 rounded-xl glass text-sm ${subTextColor}`}>
-                    <strong className={textColor}>🎮 Try these UI commands:</strong>
-                    <ul className="mt-1 ml-4 list-disc">
-                        <li>"Change background to blue" / "Make background red"</li>
-                        <li>"Switch to light theme" / "Use dark mode"</li>
-                        <li>"Show a success notification saying Hello!"</li>
-                        <li>"Reset the UI to default"</li>
-                    </ul>
+                {/* View Toggle */}
+                <div className="flex gap-2 mb-4">
+                    <button
+                        onClick={() => setActiveView('chat')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeView === 'chat'
+                            ? 'bg-primary-600 text-white'
+                            : 'glass hover:bg-white/10'
+                            }`}
+                    >
+                        💬 Chat
+                    </button>
+                    <button
+                        onClick={() => setActiveView('recipe')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeView === 'recipe'
+                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                            : 'glass hover:bg-white/10'
+                            }`}
+                    >
+                        🍳 Recipe Creator (Shared State)
+                    </button>
                 </div>
 
-                {/* Tool Status */}
-                {activeTool && (
-                    <ToolStatus tool={activeTool} />
-                )}
-
-                {/* Error Display */}
-                {error && (
-                    <div className="mb-4 p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300">
-                        <div className="flex items-center gap-2">
-                            <span className="text-red-400">⚠️</span>
-                            <span className="font-medium">Error:</span>
-                            <span>{error}</span>
+                {activeView === 'chat' ? (
+                    <>
+                        {/* UI Actions Info */}
+                        <div className={`mb-4 p-3 rounded-xl glass text-sm ${subTextColor}`}>
+                            <strong className={textColor}>🎮 Try these UI commands:</strong>
+                            <ul className="mt-1 ml-4 list-disc">
+                                <li>"Change background to blue" / "Make background red"</li>
+                                <li>"Switch to light theme" / "Use dark mode"</li>
+                                <li>"Show a success notification saying Hello!"</li>
+                                <li>"Reset the UI to default"</li>
+                            </ul>
                         </div>
+
+                        {/* Tool Status */}
+                        {activeTool && (
+                            <ToolStatus tool={activeTool} />
+                        )}
+
+                        {/* Error Display */}
+                        {error && (
+                            <div className="mb-4 p-4 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-red-400">⚠️</span>
+                                    <span className="font-medium">Error:</span>
+                                    <span>{error}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Chat Interface */}
+                        <ChatInterface
+                            messages={messages}
+                            isStreaming={isStreaming}
+                            onSendMessage={sendMessage}
+                            onClear={clearMessages}
+                        />
+                    </>
+                ) : (
+                    /* Recipe Creator - Shared State Demo */
+                    <div className="flex-1">
+                        <div className={`mb-4 p-3 rounded-xl glass text-sm ${subTextColor}`}>
+                            <strong className={textColor}>🍳 Shared State Recipe Creator</strong>
+                            <p className="mt-1">
+                                This demo shows bidirectional state sync between UI and AI.
+                                Add ingredients and instructions, then click "Improve with AI" to see
+                                the AI enhance your recipe while updating the UI in real-time!
+                            </p>
+                        </div>
+                        <RecipeCreator
+                            initialState={recipeState}
+                            onStateChange={(state) => setRecipeState(state)}
+                            onImproveRequest={handleRecipeImprove}
+                            isImproving={isImprovingRecipe}
+                        />
                     </div>
                 )}
-
-                {/* Chat Interface */}
-                <ChatInterface
-                    messages={messages}
-                    isStreaming={isStreaming}
-                    onSendMessage={sendMessage}
-                    onClear={clearMessages}
-                />
             </main>
 
             {/* Footer */}

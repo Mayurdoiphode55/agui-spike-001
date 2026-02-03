@@ -191,6 +191,13 @@ class EventEmitter:
             "action": action,
             "args": args
         })
+    
+    async def emit_state_update(self, state: dict):
+        """Emit state update for Shared State feature (bidirectional sync)"""
+        print(f"📦 Emitting STATE_UPDATE: {state.get('title', 'Recipe')}")
+        await self.emit("STATE_UPDATE", {
+            "state": state
+        })
 
 
 def get_adapter(adapter_type: str, emitter: EventEmitter):

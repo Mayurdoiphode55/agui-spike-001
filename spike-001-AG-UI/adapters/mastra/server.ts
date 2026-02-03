@@ -2,13 +2,13 @@
  * Mastra AG-UI Server
  * Express server with SSE streaming for AG-UI events
  * Uses Groq API for LLM with keyword-based routing
- * Includes Weather Card, Planning Checklist, UI Action support
+ * Includes Weather Card, Planning Checklist, UI Action support, and Shared State Recipe Creator
  */
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { createGroq } from '@ai-sdk/groq';
-import { generateText, streamText } from 'ai';
+import { generateText } from 'ai';
 import 'dotenv/config';
 
 const app = express();
@@ -148,6 +148,102 @@ function executePlan(planTitle: string, steps: string[]): string {
     return result;
 }
 
+// Improve Recipe Logic
+function improveRecipe(recipeState: any): any {
+    // Copy state
+    const improved = { ...recipeState };
+    if (!improved.ingredients) improved.ingredients = [];
+    if (!improved.instructions) improved.instructions = [];
+    if (!improved.dietaryPreferences) improved.dietaryPreferences = [];
+
+    const existingIngredients = new Set(improved.ingredients.map((i: any) => i.name.toLowerCase()));
+
+    const titleLower = (improved.title || '').toLowerCase();
+    const prefs = improved.dietaryPreferences.map((p: string) => p.toLowerCase());
+
+    let newIngredients: [string, string][] = [];
+    let baseInstructions: string[] = [];
+
+    if (['cake', 'carrot', 'bake', 'dessert'].some(w => titleLower.includes(w))) {
+        newIngredients = [
+            ["Eggs", "2 large"],
+            ["Baking Powder", "1 tablespoon"],
+            ["Butter", "1/2 cup, melted"],
+            ["Vanilla Extract", "1 teaspoon"],
+            ["Sugar", "1 cup"],
+            ["Salt", "1/2 teaspoon"]
+        ];
+        baseInstructions = [
+            "Preheat oven to 350°F (175°C).",
+            "Mix wet ingredients in a large bowl.",
+            "Combine dry ingredients in a separate bowl.",
+            "Fold dry ingredients into wet ingredients.",
+            "Bake for 25-30 minutes until golden."
+        ];
+    } else if (['pasta', 'spaghetti', 'noodle'].some(w => titleLower.includes(w))) {
+        newIngredients = [
+            ["Olive Oil", "2 tablespoons"],
+            ["Garlic", "3 cloves, minced"],
+            ["Parmesan Cheese", "1/2 cup, grated"],
+            ["Black Pepper", "to taste"],
+            ["Fresh Basil", "1/4 cup, chopped"]
+        ];
+        baseInstructions = [
+            "Boil salted water and cook pasta.",
+            "Sauté aromatics in olive oil.",
+            "Toss pasta with sauce and cheese.",
+            "Garnish with fresh herbs."
+        ];
+    } else {
+        newIngredients = [
+            ["Olive Oil", "2 tablespoons"],
+            ["Garlic", "2 cloves, minced"],
+            ["Salt", "to taste"],
+            ["Black Pepper", "to taste"]
+        ];
+        baseInstructions = [
+            "Prep all ingredients.",
+            "Cook main protein/vegetables.",
+            "Season to taste.",
+            "Serve hot."
+        ];
+    }
+
+    // Dietary adjustments
+    if (prefs.includes('vegan') || prefs.includes('vegetarian')) {
+        newIngredients = newIngredients.filter(([n]) => !['Eggs', 'Butter', 'Parmesan Cheese'].includes(n));
+        if (prefs.includes('vegan')) newIngredients.push(["Dairy-Free Butter", "1/2 cup"]);
+    }
+    if (prefs.includes('high protein')) newIngredients.push(["Protein Powder", "1 scoop"]);
+    if (prefs.includes('low carb')) {
+        newIngredients = newIngredients.filter(([n]) => !['Sugar', 'Flour'].includes(n));
+        newIngredients.push(["Almond Flour", "1 cup"]);
+    }
+
+    // Add non-duplicate ingredients
+    for (const [name, amount] of newIngredients) {
+        if (!existingIngredients.has(name.toLowerCase())) {
+            improved.ingredients.push({
+                id: `ing-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                name,
+                amount
+            });
+        }
+    }
+
+    // Add instructions if empty
+    if (improved.instructions.filter((i: string) => i.trim()).length < 3) {
+        improved.instructions = baseInstructions;
+    }
+
+    // Update title
+    if ((!improved.title || improved.title === 'My Recipe') && improved.ingredients.length > 0) {
+        improved.title = `${improved.ingredients[0].name} Delight`;
+    }
+
+    return improved;
+}
+
 // Main AG-UI endpoint
 app.post('/api/copilotkit', async (req: Request, res: Response) => {
     const { messages } = req.body;
@@ -174,8 +270,25 @@ app.post('/api/copilotkit', async (req: Request, res: Response) => {
 
         // ============ KEYWORD-BASED ROUTING ============
 
+        // Check for IMPROVE_RECIPE command
+        if (userInput.startsWith('IMPROVE_RECIPE:')) {
+            try {
+                const jsonStr = userInput.substring('IMPROVE_RECIPE:'.length);
+                const recipeState = JSON.parse(jsonStr);
+                const improved = improveRecipe(recipeState);
+
+                sendSSE(res, 'STATE_UPDATE', { state: improved });
+                responseText = "✨ I improved the recipe by completing it and adding all necessary ingredients and instructions.";
+                useKeywordResponse = true;
+            } catch (e) {
+                console.error('Error improving recipe:', e);
+                responseText = "Sorry, I encountered an error improving the recipe.";
+                useKeywordResponse = true;
+            }
+        }
+
         // Check for EXECUTE_PLAN command
-        if (userInput.startsWith('EXECUTE_PLAN:')) {
+        if (!useKeywordResponse && userInput.startsWith('EXECUTE_PLAN:')) {
             try {
                 const jsonStart = userInput.indexOf(':[');
                 if (jsonStart !== -1) {
@@ -271,7 +384,7 @@ app.post('/api/copilotkit', async (req: Request, res: Response) => {
         if (!useKeywordResponse) {
             const greetings = ['hello', 'hi', 'hey', 'hi there', 'hello there'];
             if (greetings.includes(userLower.trim()) || userLower.startsWith('hello,') || userLower.startsWith('hi,')) {
-                responseText = "Hello! 👋 I'm your AI assistant (Mastra). I can help you with:\n• Weather info (try: 'What's the weather in Mumbai?')\n• Planning tasks (try: 'Plan a product launch')\n• UI changes (try: 'Change background to blue')\n• Calculations, time, and more!\n\nHow can I help you today?";
+                responseText = "Hello! 👋 I'm your AI assistant (Mastra). I can help you with:\n• Weather info (try: 'What's the weather in Mumbai?')\n• Planning tasks (try: 'Plan a product launch')\n• UI changes (try: 'Change background to blue')\n• Create and improve recipes (try the Recipe Creator!)\n\nHow can I help you today?";
                 useKeywordResponse = true;
             }
         }
@@ -336,8 +449,8 @@ app.get('/', (_req: Request, res: Response) => {
         version: '1.0.0',
         provider: 'Groq',
         model: modelId,
-        features: ['Weather Card', 'Planning Checklist', 'UI Actions', 'Time', 'Greetings'],
-        uiActionsSupported: ['changeBackgroundColor', 'changeTheme', 'showNotification', 'resetUI']
+        features: ['Weather Card', 'Planning Checklist', 'UI Actions', 'Time', 'Greetings', 'Shared State Recipes'],
+        uiActionsSupported: ['changeBackgroundColor', 'changeTheme', 'showNotification', 'resetUI', 'updateRecipeState']
     });
 });
 
@@ -345,5 +458,5 @@ app.listen(PORT, () => {
     console.log(`🚀 Mastra AG-UI Server running at http://localhost:${PORT}`);
     console.log(`   Model: ${modelId}`);
     console.log(`   Provider: Groq`);
-    console.log(`   Features: Weather, Planning, UI Actions, Time`);
+    console.log(`   Features: Weather, Planning, UI Actions, Time, Recipes`);
 });

@@ -353,6 +353,121 @@ class LangChainAGUIAdapter:
         
         return None
     
+    def _improve_recipe(self, recipe_state: dict) -> dict:
+        """Improve a recipe based on current state using intelligent rules"""
+        import uuid
+        
+        # Copy state to avoid mutation
+        improved = {
+            "cookingTime": recipe_state.get("cookingTime", 30),
+            "skillLevel": recipe_state.get("skillLevel", "intermediate"),
+            "dietaryPreferences": recipe_state.get("dietaryPreferences", []),
+            "ingredients": list(recipe_state.get("ingredients", [])),
+            "instructions": list(recipe_state.get("instructions", [])),
+            "title": recipe_state.get("title", "My Recipe")
+        }
+        
+        # Get existing ingredient names
+        existing_ingredients = [i.get("name", "").lower() for i in improved["ingredients"]]
+        
+        # Determine recipe type based on title and ingredients
+        title_lower = improved["title"].lower()
+        prefs = [p.lower() for p in improved["dietaryPreferences"]]
+        
+        # Base ingredients based on recipe type
+        new_ingredients = []
+        base_instructions = []
+        
+        if any(word in title_lower for word in ["cake", "carrot", "bake", "dessert"]):
+            # Baking recipe
+            new_ingredients = [
+                ("Eggs", "2 large"),
+                ("Baking Powder", "1 tablespoon"),
+                ("Butter", "1/2 cup, melted"),
+                ("Vanilla Extract", "1 teaspoon"),
+                ("Sugar", "1 cup"),
+                ("Salt", "1/2 teaspoon")
+            ]
+            base_instructions = [
+                "Preheat oven to 350°F (175°C).",
+                "In a large mixing bowl, combine the grated carrots, sugar, and melted butter. Mix until well combined.",
+                "Add the eggs and vanilla extract to the mixture, stirring until smooth.",
+                "In another bowl, whisk together the all-purpose flour and baking powder.",
+                "Gradually add the dry ingredients to the wet ingredients, mixing just until combined.",
+                "Pour the batter into a greased baking dish and smooth the top with a spatula.",
+                "Bake in the preheated oven for 25-30 minutes, or until a toothpick inserted into the center comes out clean.",
+                "Allow to cool before serving."
+            ]
+        elif any(word in title_lower for word in ["pasta", "spaghetti", "noodle"]):
+            # Pasta recipe
+            new_ingredients = [
+                ("Olive Oil", "2 tablespoons"),
+                ("Garlic", "3 cloves, minced"),
+                ("Parmesan Cheese", "1/2 cup, grated"),
+                ("Black Pepper", "to taste"),
+                ("Fresh Basil", "1/4 cup, chopped")
+            ]
+            base_instructions = [
+                "Bring a large pot of salted water to a boil.",
+                "Cook pasta according to package directions until al dente.",
+                "Heat olive oil in a large pan over medium heat.",
+                "Sauté garlic until fragrant, about 1 minute.",
+                "Drain pasta and add to the pan with garlic.",
+                "Toss with Parmesan cheese and fresh basil.",
+                "Season with black pepper and serve immediately."
+            ]
+        else:
+            # Generic savory recipe
+            new_ingredients = [
+                ("Olive Oil", "2 tablespoons"),
+                ("Garlic", "2 cloves, minced"),
+                ("Salt", "to taste"),
+                ("Black Pepper", "to taste"),
+                ("Fresh Herbs", "1/4 cup, chopped")
+            ]
+            base_instructions = [
+                "Prepare all ingredients by washing and chopping as needed.",
+                "Heat oil in a large pan over medium heat.",
+                "Add aromatics and sauté until fragrant.",
+                "Add main ingredients and cook until done.",
+                "Season to taste with salt and pepper.",
+                "Serve hot with fresh herbs as garnish."
+            ]
+        
+        # Apply dietary preference modifications
+        if "vegan" in prefs or "vegetarian" in prefs:
+            new_ingredients = [(n, a) for n, a in new_ingredients if n.lower() not in ["eggs", "butter", "parmesan cheese"]]
+            if "vegan" in prefs:
+                new_ingredients.append(("Dairy-Free Butter", "1/2 cup, melted"))
+        
+        if "high protein" in prefs:
+            new_ingredients.append(("Protein Powder", "1 scoop"))
+        
+        if "low carb" in prefs:
+            new_ingredients = [(n, a) for n, a in new_ingredients if n.lower() not in ["sugar", "flour"]]
+            new_ingredients.append(("Almond Flour", "1 cup"))
+        
+        # Add new ingredients (avoid duplicates)
+        for name, amount in new_ingredients:
+            if name.lower() not in existing_ingredients:
+                improved["ingredients"].append({
+                    "id": f"ing-{uuid.uuid4().hex[:6]}",
+                    "name": name,
+                    "amount": amount
+                })
+        
+        # Add instructions if empty or minimal
+        if len([i for i in improved["instructions"] if i.strip()]) < 3:
+            improved["instructions"] = base_instructions
+        
+        # Update title if generic
+        if improved["title"] == "My Recipe" and improved["ingredients"]:
+            first_ing = improved["ingredients"][0].get("name", "")
+            if first_ing:
+                improved["title"] = f"{first_ing.title()} Delight"
+        
+        return improved
+    
     async def process_message(self, user_input: str, history: List = None) -> str:
         run_id = f"run-{uuid.uuid4().hex[:8]}"
         thread_id = f"thread-{uuid.uuid4().hex[:8]}"
@@ -420,18 +535,44 @@ class LangChainAGUIAdapter:
         # Check for PLANNING requests
         if any(kw in user_lower for kw in ['plan ', 'plan a ', 'create a plan', 'steps to', 'checklist', 'how to', 'steps for']):
             await self.emitter.emit_text_message_start(message_id, "assistant")
-            # Extract topic from input
+            # Extract the topic
             topic = user_input
             for prefix in ['plan ', 'plan a ', 'create a plan for ', 'steps to ', 'checklist for ']:
                 if user_lower.startswith(prefix):
                     topic = user_input[len(prefix):]
                     break
-            # Call create_plan directly
-            result = create_plan.invoke({"topic": topic})
+            result = create_plan(topic)
             await self.emitter.emit_text_chunk(result, message_id)
             await self.emitter.emit_text_message_end(message_id)
             await self.emitter.emit_run_finished(run_id, thread_id)
             return result
+        
+        # Check for IMPROVE_RECIPE command (from Recipe Creator Shared State)
+        if user_input.startswith('IMPROVE_RECIPE:'):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            try:
+                import json
+                recipe_json = user_input[len('IMPROVE_RECIPE:'):]
+                recipe_state = json.loads(recipe_json)
+                
+                # Improve the recipe based on current state
+                improved_recipe = self._improve_recipe(recipe_state)
+                
+                # Emit STATE_UPDATE with improved recipe (bidirectional sync)
+                await self.emitter.emit_state_update(improved_recipe)
+                
+                # Also send a confirmation message
+                result = f"✨ I improved the recipe by completing it and adding all necessary ingredients and instructions."
+                await self.emitter.emit_text_chunk(result, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return result
+            except Exception as e:
+                error_msg = f"Error improving recipe: {str(e)}"
+                await self.emitter.emit_text_chunk(error_msg, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return error_msg
         
         # Check for WEATHER requests
         if any(kw in user_lower for kw in ['weather in', 'weather like in', 'weather for', 'temperature in']):

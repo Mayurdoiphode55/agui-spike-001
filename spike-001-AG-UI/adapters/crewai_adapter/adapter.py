@@ -120,6 +120,104 @@ class CrewAIAGUIAdapter:
         except ImportError as e:
             raise ImportError(f"CrewAI not installed. Run: pip install crewai langchain-groq. Error: {e}")
     
+    def _improve_recipe(self, recipe_state: Dict) -> Dict:
+        """Improve a recipe based on current state using intelligent rules"""
+        # Copy state to avoid mutation
+        improved = {
+            "cookingTime": recipe_state.get("cookingTime", 30),
+            "skillLevel": recipe_state.get("skillLevel", "intermediate"),
+            "dietaryPreferences": recipe_state.get("dietaryPreferences", []),
+            "ingredients": list(recipe_state.get("ingredients", [])),
+            "instructions": list(recipe_state.get("instructions", [])),
+            "title": recipe_state.get("title", "My Recipe")
+        }
+        
+        # Get existing ingredient names
+        existing_ingredients = [i.get("name", "").lower() for i in improved["ingredients"]]
+        
+        # Determine recipe type based on title and ingredients
+        title_lower = improved["title"].lower()
+        prefs = [p.lower() for p in improved["dietaryPreferences"]]
+        
+        # Base ingredients based on recipe type
+        new_ingredients = []
+        base_instructions = []
+        
+        if any(word in title_lower for word in ["cake", "carrot", "bake", "dessert"]):
+            # Baking recipe
+            new_ingredients = [
+                ("Eggs", "2 large"),
+                ("Baking Powder", "1 tablespoon"),
+                ("Butter", "1/2 cup, melted"),
+                ("Vanilla Extract", "1 teaspoon"),
+                ("Sugar", "1 cup"),
+                ("Salt", "1/2 teaspoon")
+            ]
+            base_instructions = [
+                "Preheat oven to 350°F (175°C).",
+                "Mix wet ingredients.",
+                "Combine dry ingredients.",
+                "Mix everything together.",
+                "Bake for 25-30 minutes."
+            ]
+        elif any(word in title_lower for word in ["pasta", "spaghetti", "noodle"]):
+            # Pasta recipe
+            new_ingredients = [
+                ("Olive Oil", "2 tablespoons"),
+                ("Garlic", "3 cloves, minced"),
+                ("Parmesan Cheese", "1/2 cup, grated"),
+                ("Black Pepper", "to taste"),
+                ("Fresh Basil", "1/4 cup, chopped")
+            ]
+            base_instructions = [
+                "Boil pasta.",
+                "Sauté garlic.",
+                "Mix pasta and sauce.",
+                "Serve hot."
+            ]
+        else:
+            # Generic savory recipe
+            new_ingredients = [
+                ("Olive Oil", "2 tablespoons"),
+                ("Garlic", "2 cloves, minced"),
+                ("Salt", "to taste"),
+                ("Black Pepper", "to taste")
+            ]
+            base_instructions = [
+                "Prep ingredients.",
+                "Cook main dish.",
+                "Season to taste.",
+                "Serve hot."
+            ]
+        
+        # Dietary adjustments
+        if "vegan" in prefs or "vegetarian" in prefs:
+            new_ingredients = [(n, a) for n, a in new_ingredients if n.lower() not in ["eggs", "butter", "parmesan cheese"]]
+            if "vegan" in prefs:
+                new_ingredients.append(("Dairy-Free Butter", "1/2 cup, melted"))
+        
+        if "high protein" in prefs:
+            new_ingredients.append(("Protein Powder", "1 scoop"))
+            
+        # Add new ingredients
+        for name, amount in new_ingredients:
+            if name.lower() not in existing_ingredients:
+                improved["ingredients"].append({
+                    "id": f"ing-{uuid.uuid4().hex[:6]}",
+                    "name": name,
+                    "amount": amount
+                })
+        
+        # Add instructions if empty
+        if len([i for i in improved["instructions"] if i.strip()]) < 3:
+            improved["instructions"] = base_instructions
+            
+        # Update title
+        if improved["title"] == "My Recipe" and improved["ingredients"]:
+            improved["title"] = f"{improved['ingredients'][0]['name']} Delight"
+            
+        return improved
+
     async def _simulate_streaming(self, text: str, message_id: str, chunk_size: int = 3):
         """
         Simulate streaming by emitting text in chunks.
@@ -151,6 +249,34 @@ class CrewAIAGUIAdapter:
         
         # Emit run started
         await self.emitter.emit_run_started(run_id, thread_id)
+        
+        # Check for IMPROVE_RECIPE command (from Recipe Creator Shared State)
+        if user_input.startswith('IMPROVE_RECIPE:'):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            try:
+                import json
+                recipe_json = user_input[len('IMPROVE_RECIPE:'):]
+                recipe_state = json.loads(recipe_json)
+                
+                # Improve the recipe based on current state
+                improved_recipe = self._improve_recipe(recipe_state)
+                
+                # Emit STATE_UPDATE with improved recipe (bidirectional sync)
+                # Need to add emit_state_update wrapper if not present, or call emit directly
+                await self.emitter.emit("STATE_UPDATE", {"state": improved_recipe})
+                
+                # Also send a confirmation message
+                result = f"✨ I improved the recipe by completing it and adding all necessary ingredients and instructions."
+                await self.emitter.emit_text_chunk(result, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return result
+            except Exception as e:
+                error_msg = f"Error improving recipe: {str(e)}"
+                await self.emitter.emit_text_chunk(error_msg, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return error_msg
         
         try:
             # Emit step started for crew setup

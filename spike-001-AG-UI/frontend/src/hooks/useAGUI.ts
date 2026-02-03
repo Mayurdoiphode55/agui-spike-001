@@ -33,12 +33,23 @@ export interface AGUIMetrics {
     throughput: number | null;
 }
 
+// Recipe State for Shared State feature
+export interface RecipeState {
+    cookingTime: number;
+    skillLevel: 'beginner' | 'intermediate' | 'expert';
+    dietaryPreferences: string[];
+    ingredients: { id: string; name: string; amount: string }[];
+    instructions: string[];
+    title: string;
+}
+
 // UI Actions that can be invoked by the AI
 export interface UIActions {
     changeBackgroundColor?: (color: string) => void;
     changeTheme?: (theme: 'dark' | 'light') => void;
     showNotification?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
     resetUI?: () => void;
+    updateRecipeState?: (state: RecipeState) => void;
 }
 
 interface UseAGUIReturn {
@@ -48,8 +59,10 @@ interface UseAGUIReturn {
     activeTool: ToolCall | null;
     error: string | null;
     sendMessage: (content: string) => Promise<void>;
+    sendRecipeImproveRequest: (recipeState: RecipeState) => Promise<void>;
     clearMessages: () => void;
     metrics: AGUIMetrics;
+    isImprovingRecipe: boolean;
 }
 
 export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn {
@@ -260,6 +273,14 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
                     break;
 
                 // UI Action events - execute frontend actions
+                // Shared State update from agent
+                case 'STATE_UPDATE':
+                    if (data.state && uiActionsRef.current?.updateRecipeState) {
+                        console.log('📦 STATE_UPDATE received:', data.state);
+                        uiActionsRef.current.updateRecipeState(data.state as RecipeState);
+                    }
+                    break;
+
                 case 'UI_ACTION':
                 case 'FRONTEND_ACTION':
                     if (data.action && data.args) {
@@ -390,6 +411,72 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
         });
     }, []);
 
+    // State for recipe improvement
+    const [isImprovingRecipe, setIsImprovingRecipe] = useState(false);
+
+    // Send recipe improve request to backend
+    const sendRecipeImproveRequest = useCallback(async (recipeState: RecipeState) => {
+        if (isImprovingRecipe) return;
+
+        setIsImprovingRecipe(true);
+        setError(null);
+
+        try {
+            // Build the message array with recipe state sync
+            const messageArray = messages.map(m => ({
+                role: m.role,
+                content: m.content
+            }));
+
+            // Add special improve request message
+            messageArray.push({
+                role: 'user' as const,
+                content: `IMPROVE_RECIPE:${JSON.stringify(recipeState)}`
+            });
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: messageArray })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No response body');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const assistantMsgId = `msg-${Date.now() + 1}`;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.trim()) {
+                        processSSELine(line, assistantMsgId);
+                    }
+                }
+            }
+
+            if (buffer.trim()) {
+                processSSELine(buffer, assistantMsgId);
+            }
+
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setIsImprovingRecipe(false);
+        }
+    }, [endpoint, messages, isImprovingRecipe, processSSELine]);
+
     useEffect(() => {
         return () => {
             if (abortControllerRef.current) {
@@ -405,8 +492,10 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
         activeTool,
         error,
         sendMessage,
+        sendRecipeImproveRequest,
         clearMessages,
-        metrics
+        metrics,
+        isImprovingRecipe
     };
 }
 
