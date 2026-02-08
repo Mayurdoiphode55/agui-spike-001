@@ -26,6 +26,46 @@ load_dotenv()
 
 app = FastAPI(title="AG-UI Research Spike Backend", version="1.0.0")
 
+# Storage directory for form submissions
+STORAGE_DIR = Path(__file__).parent / "data"
+STORAGE_DIR.mkdir(exist_ok=True)
+FORM_SUBMISSIONS_FILE = STORAGE_DIR / "form_submissions.json"
+
+
+def save_form_submission(form_data: Dict, file_data: Optional[Dict] = None, message: str = "") -> Dict:
+    """Save form submission to JSON file"""
+    submission = {
+        "id": f"sub-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "form_data": form_data,
+        "file_info": {
+            "name": file_data.get("name"),
+            "type": file_data.get("type"),
+            "size": file_data.get("size")
+        } if file_data else None,
+        "message": message
+    }
+    
+    # Load existing submissions
+    submissions = []
+    if FORM_SUBMISSIONS_FILE.exists():
+        try:
+            with open(FORM_SUBMISSIONS_FILE, "r") as f:
+                submissions = json.load(f)
+        except json.JSONDecodeError:
+            submissions = []
+    
+    # Add new submission
+    submissions.append(submission)
+    
+    # Save to file
+    with open(FORM_SUBMISSIONS_FILE, "w") as f:
+        json.dump(submissions, f, indent=2)
+    
+    print(f"💾 Form submission saved: {submission['id']}")
+    return submission
+
+
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
@@ -39,6 +79,8 @@ app.add_middleware(
 class Message(BaseModel):
     role: str
     content: str
+    form_data: Optional[Dict[str, Any]] = None
+    file_data: Optional[Dict[str, Any]] = None
 
 
 class RunRequest(BaseModel):
@@ -46,21 +88,91 @@ class RunRequest(BaseModel):
     thread_id: Optional[str] = None
 
 
+def extract_form_data(content: str) -> tuple[str, Optional[Dict]]:
+    """Extract form data from message content"""
+    form_data = None
+    clean_content = content
+    
+    form_match = re.search(r'\[FORM_DATA\](.*?)\[/FORM_DATA\]', content, re.DOTALL)
+    if form_match:
+        try:
+            form_data = json.loads(form_match.group(1))
+            clean_content = re.sub(r'\[FORM_DATA\].*?\[/FORM_DATA\]', '', clean_content, flags=re.DOTALL).strip()
+        except json.JSONDecodeError:
+            pass
+    
+    return clean_content, form_data
+
+
+def extract_file_data(content: str) -> tuple[str, Optional[Dict]]:
+    """Extract file data from message content"""
+    file_data = None
+    clean_content = content
+    
+    file_match = re.search(r'\[FILE_DATA\](.*?)\[/FILE_DATA\]', content, re.DOTALL)
+    if file_match:
+        try:
+            file_data = json.loads(file_match.group(1))
+            clean_content = re.sub(r'\[FILE_DATA\].*?\[/FILE_DATA\]', '', clean_content, flags=re.DOTALL).strip()
+        except json.JSONDecodeError:
+            pass
+    
+    return clean_content, file_data
+
+
+def format_structured_data_for_ai(content: str, form_data: Optional[Dict], file_data: Optional[Dict]) -> str:
+    """Format form and file data as readable context for AI"""
+    enhanced_content = content
+    
+    if form_data:
+        enhanced_content += "\n\n--- STRUCTURED FORM DATA ---\n"
+        if form_data.get('textFields'):
+            for key, value in form_data['textFields'].items():
+                if value:
+                    enhanced_content += f"- {key.replace('_', ' ').title()}: {value}\n"
+        if form_data.get('dropdowns'):
+            for key, value in form_data['dropdowns'].items():
+                enhanced_content += f"- {key.replace('_', ' ').title()}: {value}\n"
+        if form_data.get('checkboxes'):
+            checked = [k for k, v in form_data['checkboxes'].items() if v]
+            if checked:
+                enhanced_content += f"- Options: {', '.join(checked)}\n"
+    
+    if file_data:
+        enhanced_content += "\n\n--- ATTACHED FILE ---\n"
+        enhanced_content += f"Filename: {file_data.get('name', 'unknown')}\n"
+        enhanced_content += f"Type: {file_data.get('type', 'unknown')}\n"
+        enhanced_content += f"Size: {file_data.get('size', 0)} bytes\n"
+        if file_data.get('content'):
+            content_preview = file_data['content'][:5000]  # Limit to 5000 chars for AI context
+            enhanced_content += f"\nFile Content:\n```\n{content_preview}\n```\n"
+    
+    return enhanced_content
+
+
 def parse_ui_actions_from_text(text: str) -> List[Dict]:
-    """Parse UI actions from text - fallback when LLM doesn't use tools properly"""
+    """Parse UI actions from text - fallback when LLM doesn't use tools properly
+    
+    NOTE: This function is intentionally strict to avoid false positive triggers.
+    It ignores text that appears to be examples, quotes, or documentation.
+    """
     actions = []
     lower_text = text.lower()
     
-    # Color patterns
+    # Skip parsing if text contains example indicators (avoid false triggers from greeting text)
+    example_indicators = ["try:", "(try:", "example:", "e.g.", "such as", "like '", 'like "', "can help you with"]
+    if any(indicator in lower_text for indicator in example_indicators):
+        return actions  # Don't parse example/help text
+    
+    # Color patterns - made more strict (must start with imperative)
     color_patterns = [
-        r'change.*background.*(?:to|color)\s*["\']?(\w+)["\']?',
+        r'^change.*background.*(?:to|color)\s*["\']?(\w+)["\']?',  # Must start with "change"
         r'change_background_color\s*\(\s*["\']?(\w+)["\']?\s*\)',
-        r'background.*(?:to|=)\s*["\']?(\w+)["\']?',
-        r'(?:set|make).*background\s+(\w+)',
+        r'^(?:set|make)\s+(?:the\s+)?background\s+(?:to\s+)?(\w+)',  # Must start with "set/make"
     ]
     
     for pattern in color_patterns:
-        match = re.search(pattern, lower_text, re.IGNORECASE)
+        match = re.search(pattern, lower_text, re.IGNORECASE | re.MULTILINE)
         if match:
             color = match.group(1)
             if color in ['blue', 'red', 'green', 'yellow', 'purple', 'pink', 'orange', 'black', 'white', 'gray', 'cyan', 'magenta']:
@@ -70,11 +182,14 @@ def parse_ui_actions_from_text(text: str) -> List[Dict]:
                 })
                 break
     
-    # Theme patterns
+    # Theme patterns - must not be in example context
     if 'light theme' in lower_text or 'light mode' in lower_text or "change_theme('light')" in lower_text or 'change_theme("light")' in lower_text:
-        actions.append({"action": "changeTheme", "args": {"theme": "light"}})
+        # Only trigger if it's an imperative (starts with action words)
+        if any(lower_text.startswith(prefix) for prefix in ['use ', 'switch ', 'change ', 'set ']):
+            actions.append({"action": "changeTheme", "args": {"theme": "light"}})
     elif 'dark theme' in lower_text or 'dark mode' in lower_text or "change_theme('dark')" in lower_text or 'change_theme("dark")' in lower_text:
-        actions.append({"action": "changeTheme", "args": {"theme": "dark"}})
+        if any(lower_text.startswith(prefix) for prefix in ['use ', 'switch ', 'change ', 'set ']):
+            actions.append({"action": "changeTheme", "args": {"theme": "dark"}})
     
     # Notification patterns
     notify_patterns = [
@@ -90,8 +205,8 @@ def parse_ui_actions_from_text(text: str) -> List[Dict]:
             })
             break
     
-    # Reset patterns
-    if 'reset_ui' in lower_text or ('reset' in lower_text and 'ui' in lower_text):
+    # Reset patterns - only if it's an imperative command
+    if lower_text.startswith('reset') and 'ui' in lower_text:
         actions.append({"action": "resetUI", "args": {}})
     
     return actions
@@ -242,6 +357,9 @@ async def copilotkit_endpoint(request: RunRequest):
             
             # Get the last user message
             user_message = ""
+            form_data = None
+            file_data = None
+            
             for msg in reversed(request.messages):
                 if msg.role == "user":
                     user_message = msg.content
@@ -252,13 +370,28 @@ async def copilotkit_endpoint(request: RunRequest):
                 await emitter.emit("DONE", {})
                 return
             
+            # Extract form and file data from message content
+            user_message, form_data = extract_form_data(user_message)
+            user_message, file_data = extract_file_data(user_message)
+            
+            # Log structured data if present
+            if form_data:
+                print(f"📋 Form data received: {json.dumps(form_data, indent=2)}")
+                # Save form submission to storage
+                save_form_submission(form_data, file_data, user_message)
+            if file_data:
+                print(f"📎 File data received: {file_data.get('name')} ({file_data.get('size')} bytes)")
+            
+            # Format structured data for AI context
+            enhanced_message = format_structured_data_for_ai(user_message, form_data, file_data)
+            
             # Check for UI actions in user input directly (immediate response)
             input_actions = parse_ui_actions_from_text(user_message)
             for action in input_actions:
                 await emitter.emit_ui_action(action["action"], action["args"])
             
-            # Run the adapter
-            await adapter.process_message(user_message, request.messages)
+            # Run the adapter with enhanced message
+            await adapter.process_message(enhanced_message, request.messages)
             
         except Exception as e:
             print(f"Error: {e}")
@@ -286,6 +419,28 @@ async def health_check():
     return {"status": "healthy", "adapter": os.getenv("AGUI_ADAPTER", "langchain")}
 
 
+@app.get("/api/submissions")
+async def get_submissions():
+    """Get all stored form submissions"""
+    if not FORM_SUBMISSIONS_FILE.exists():
+        return {"submissions": [], "count": 0}
+    
+    try:
+        with open(FORM_SUBMISSIONS_FILE, "r") as f:
+            submissions = json.load(f)
+        return {"submissions": submissions, "count": len(submissions)}
+    except json.JSONDecodeError:
+        return {"submissions": [], "count": 0, "error": "Failed to parse submissions file"}
+
+
+@app.delete("/api/submissions")
+async def clear_submissions():
+    """Clear all stored form submissions"""
+    if FORM_SUBMISSIONS_FILE.exists():
+        FORM_SUBMISSIONS_FILE.unlink()
+    return {"message": "All submissions cleared", "success": True}
+
+
 @app.get("/")
 async def root():
     """Root endpoint with API info"""
@@ -294,12 +449,16 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "/api/copilotkit": "POST - Main AG-UI endpoint (SSE)",
+            "/api/submissions": "GET - View stored form submissions",
+            "/api/submissions (DELETE)": "DELETE - Clear all submissions",
             "/health": "GET - Health check"
         },
         "ui_actions": ["changeBackgroundColor", "changeTheme", "showNotification", "resetUI"]
     }
 
 
+if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("BACKEND_PORT", 8005))
     uvicorn.run(app, host="0.0.0.0", port=port)
+

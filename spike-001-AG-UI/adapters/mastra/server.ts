@@ -400,7 +400,14 @@ app.post('/api/copilotkit', async (req: Request, res: Response) => {
             const groqMessages = [
                 {
                     role: 'system' as const,
-                    content: 'You are a helpful AI assistant. Be concise and clear.'
+                    content: `You are a helpful AI assistant. Be concise and clear.
+
+IMPORTANT - STRUCTURED DATA HANDLING:
+- When user messages include "--- STRUCTURED FORM DATA ---", you MUST acknowledge and reference this data in your response.
+- Form data fields include: Name, Subject, Priority, Category, Options (urgent, needsFollowUp, confidential).
+- Reference the specific values provided (e.g., "I see you've submitted a request from [Name], marked as [Priority] priority").
+- When user messages include "--- ATTACHED FILE ---", acknowledge the file by name and reference its content in your response.
+- Always incorporate the structured data into your understanding of the user's request.`
                 },
                 ...messages.map((m: { role: string; content: string }) => ({
                     role: m.role as 'user' | 'assistant',

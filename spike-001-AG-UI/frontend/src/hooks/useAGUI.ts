@@ -6,12 +6,30 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+// Form data structure for structured inputs
+export interface FormData {
+    textFields: Record<string, string>;
+    dropdowns: Record<string, string>;
+    checkboxes: Record<string, boolean>;
+}
+
+// File data structure for uploads
+export interface FileData {
+    name: string;
+    type: string;
+    size: number;
+    content: string;
+    isText: boolean;
+}
+
 export interface AGUIMessage {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
     timestamp: Date;
     isComplete: boolean;
+    formData?: FormData;
+    fileData?: FileData;
     component?: {
         type: string;
         data: any;
@@ -58,7 +76,7 @@ interface UseAGUIReturn {
     isStreaming: boolean;
     activeTool: ToolCall | null;
     error: string | null;
-    sendMessage: (content: string) => Promise<void>;
+    sendMessage: (content: string, formData?: FormData, fileData?: FileData) => Promise<void>;
     sendRecipeImproveRequest: (recipeState: RecipeState) => Promise<void>;
     clearMessages: () => void;
     metrics: AGUIMetrics;
@@ -315,7 +333,7 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
         }
     }, [executeUIAction]);
 
-    const sendMessage = useCallback(async (content: string) => {
+    const sendMessage = useCallback(async (content: string, formData?: FormData, fileData?: FileData) => {
         if (!content.trim() || isStreaming) return;
 
         if (abortControllerRef.current) {
@@ -331,11 +349,27 @@ export function useAGUI(endpoint: string, uiActions?: UIActions): UseAGUIReturn 
             role: 'user',
             content,
             timestamp: new Date(),
-            isComplete: true
+            isComplete: true,
+            formData,
+            fileData
         };
         setMessages(prev => [...prev, userMessage]);
 
-        const allMessages = [...messages, userMessage].map(m => ({
+        // Build enhanced content with form/file data
+        let enhancedContent = content;
+        if (formData) {
+            enhancedContent += `\n\n[FORM_DATA]${JSON.stringify(formData)}[/FORM_DATA]`;
+        }
+        if (fileData) {
+            enhancedContent += `\n\n[FILE_DATA]${JSON.stringify({
+                name: fileData.name,
+                type: fileData.type,
+                size: fileData.size,
+                content: fileData.content.slice(0, 10000) // Limit content size
+            })}[/FILE_DATA]`;
+        }
+
+        const allMessages = [...messages, { ...userMessage, content: enhancedContent }].map(m => ({
             role: m.role,
             content: m.content
         }));

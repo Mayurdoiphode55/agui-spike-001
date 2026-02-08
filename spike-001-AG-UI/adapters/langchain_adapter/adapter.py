@@ -660,6 +660,13 @@ CRITICAL RULES:
 3. If asked to PLAN something, use the `create_plan` tool.
 4. Use UI tools (change_background_color, change_theme, show_notification, reset_ui) when appropriate.
 
+IMPORTANT - STRUCTURED DATA HANDLING:
+- When user messages include "--- STRUCTURED FORM DATA ---", you MUST acknowledge and reference this data in your response.
+- Form data fields include: Name, Subject, Priority, Category, Options (urgent, needsFollowUp, confidential).
+- Reference the specific values provided (e.g., "I see you've marked this as urgent with priority: critical").
+- When user messages include "--- ATTACHED FILE ---", acknowledge the file and reference its content in your response.
+- Always incorporate the structured data into your understanding of the user's request.
+
 Available tools: calculator, web_search, get_current_time, get_weather, create_plan, change_background_color, change_theme, show_notification, reset_ui."""))
         
         if history:

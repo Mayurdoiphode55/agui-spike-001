@@ -1,22 +1,28 @@
 /**
  * ChatInterface Component
- * Displays messages and handles user input
+ * Displays messages and handles user input with form and file attachments
  */
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { AGUIMessage } from '../hooks/useAGUI';
+import { AGUIMessage, FormData, FileData } from '../hooks/useAGUI';
 import WeatherCard from './WeatherCard';
 import TaskChecklist from './TaskChecklist';
+import FormInput from './FormInput';
+import FileUpload from './FileUpload';
 
 interface ChatInterfaceProps {
     messages: AGUIMessage[];
     isStreaming: boolean;
-    onSendMessage: (content: string) => Promise<void>;
+    onSendMessage: (content: string, formData?: FormData, fileData?: FileData) => Promise<void>;
     onClear: () => void;
 }
 
 function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatInterfaceProps) {
     const [input, setInput] = useState('');
+    const [showForm, setShowForm] = useState(false);
+    const [showFileUpload, setShowFileUpload] = useState(false);
+    const [formData, setFormData] = useState<FormData | null>(null);
+    const [fileData, setFileData] = useState<FileData | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,7 +52,15 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
         if (!input.trim() || isStreaming) return;
         const message = input;
         setInput('');
-        await onSendMessage(message);
+
+        // Send message with form and file data
+        await onSendMessage(message, formData || undefined, fileData || undefined);
+
+        // Clear form and file data after sending
+        setFormData(null);
+        setFileData(null);
+        setShowForm(false);
+        setShowFileUpload(false);
     };
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -54,6 +68,27 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
             e.preventDefault();
             handleSend();
         }
+    };
+
+    const handleFormDataChange = (data: FormData) => {
+        setFormData(data);
+    };
+
+    const handleFileSelect = (data: FileData | null) => {
+        setFileData(data);
+    };
+
+    // Helper to check if form has any data
+    const hasFormData = formData && (
+        Object.values(formData.textFields).some(v => v) ||
+        Object.values(formData.checkboxes).some(v => v)
+    );
+
+    // Format file size
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
 
     return (
@@ -68,6 +103,10 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                             Ask a question, request calculations, or explore the AI assistant.
                             Try: "What is 123 * 456?" or "Tell me about AI"
                         </p>
+                        <div className="mt-4 flex gap-4 text-xs text-gray-600">
+                            <span>📋 Use form for structured data</span>
+                            <span>📎 Attach files for analysis</span>
+                        </div>
                     </div>
                 ) : (
                     messages.map((msg, idx) => (
@@ -95,6 +134,61 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                                 {msg.component && msg.component.type === 'TaskChecklist' && (
                                     <div className="mt-4 mb-4">
                                         <TaskChecklist data={msg.component.data} />
+                                    </div>
+                                )}
+
+                                {/* Form Data Display */}
+                                {msg.formData && (
+                                    <div className="mb-2 p-2 rounded-lg bg-white/10 text-xs">
+                                        <div className="text-primary-200 mb-1 font-medium">📋 Form Data:</div>
+                                        <div className="flex flex-wrap gap-1">
+                                            {msg.formData.textFields.name && (
+                                                <span className="px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200">
+                                                    Name: {msg.formData.textFields.name}
+                                                </span>
+                                            )}
+                                            {msg.formData.textFields.subject && (
+                                                <span className="px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200">
+                                                    Subject: {msg.formData.textFields.subject}
+                                                </span>
+                                            )}
+                                            <span className="px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200">
+                                                Priority: {msg.formData.dropdowns.priority}
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200">
+                                                Category: {msg.formData.dropdowns.category}
+                                            </span>
+                                            {msg.formData.checkboxes.urgent && (
+                                                <span className="px-2 py-0.5 rounded-full bg-red-500/30 text-red-200">🚨 Urgent</span>
+                                            )}
+                                            {msg.formData.checkboxes.needsFollowUp && (
+                                                <span className="px-2 py-0.5 rounded-full bg-yellow-500/30 text-yellow-200">📞 Follow-up</span>
+                                            )}
+                                            {msg.formData.checkboxes.confidential && (
+                                                <span className="px-2 py-0.5 rounded-full bg-gray-500/30 text-gray-200">🔒 Confidential</span>
+                                            )}
+                                        </div>
+                                        {msg.formData.textFields.details && (
+                                            <div className="mt-1 text-gray-300">
+                                                Details: {msg.formData.textFields.details}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* File Data Display */}
+                                {msg.fileData && (
+                                    <div className="mb-2 p-2 rounded-lg bg-white/10 text-xs">
+                                        <div className="text-primary-200 mb-1 font-medium">📎 Attached File:</div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-lg">📄</span>
+                                            <div>
+                                                <div className="text-white">{msg.fileData.name}</div>
+                                                <div className="text-gray-400">
+                                                    {formatFileSize(msg.fileData.size)} • {msg.fileData.type}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
@@ -134,9 +228,83 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* Form Input Panel */}
+            {showForm && (
+                <FormInput
+                    onFormDataChange={handleFormDataChange}
+                    onClose={() => setShowForm(false)}
+                    disabled={isStreaming}
+                />
+            )}
+
+            {/* File Upload Panel */}
+            {showFileUpload && (
+                <FileUpload
+                    onFileSelect={handleFileSelect}
+                    onClose={() => setShowFileUpload(false)}
+                    disabled={isStreaming}
+                />
+            )}
+
+            {/* Active Attachments Preview */}
+            {(hasFormData || fileData) && (
+                <div className="flex gap-2 mb-2 text-xs">
+                    {hasFormData && (
+                        <span className="px-2 py-1 rounded-full bg-primary-500/20 text-primary-300 flex items-center gap-1">
+                            📋 Form data attached
+                            <button
+                                onClick={() => setFormData(null)}
+                                className="hover:text-white ml-1"
+                            >✕</button>
+                        </span>
+                    )}
+                    {fileData && (
+                        <span className="px-2 py-1 rounded-full bg-green-500/20 text-green-300 flex items-center gap-1">
+                            📎 {fileData.name}
+                            <button
+                                onClick={() => setFileData(null)}
+                                className="hover:text-white ml-1"
+                            >✕</button>
+                        </span>
+                    )}
+                </div>
+            )}
+
             {/* Input Area */}
             <div className="glass rounded-2xl p-3">
                 <div className="flex items-end gap-3">
+                    {/* Toggle Buttons */}
+                    <div className="flex gap-1">
+                        <button
+                            onClick={() => {
+                                setShowForm(!showForm);
+                                if (showFileUpload) setShowFileUpload(false);
+                            }}
+                            className={`p-2 rounded-lg transition-all ${showForm || hasFormData
+                                    ? 'bg-primary-500/30 text-primary-300'
+                                    : 'text-gray-500 hover:text-white hover:bg-white/10'
+                                }`}
+                            title="Add form data"
+                            disabled={isStreaming}
+                        >
+                            📋
+                        </button>
+                        <button
+                            onClick={() => {
+                                setShowFileUpload(!showFileUpload);
+                                if (showForm) setShowForm(false);
+                            }}
+                            className={`p-2 rounded-lg transition-all ${showFileUpload || fileData
+                                    ? 'bg-green-500/30 text-green-300'
+                                    : 'text-gray-500 hover:text-white hover:bg-white/10'
+                                }`}
+                            title="Attach file"
+                            disabled={isStreaming}
+                        >
+                            📎
+                        </button>
+                    </div>
+
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -184,3 +352,4 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
 }
 
 export default ChatInterface;
+
