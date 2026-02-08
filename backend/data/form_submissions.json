@@ -1,0 +1,24 @@
+[
+  {
+    "id": "sub-20260208063611169970",
+    "timestamp": "2026-02-08T06:36:11.169970",
+    "form_data": {
+      "textFields": {
+        "name": "mayur",
+        "subject": "",
+        "details": ""
+      },
+      "dropdowns": {
+        "priority": "medium",
+        "category": "general"
+      },
+      "checkboxes": {
+        "urgent": false,
+        "needsFollowUp": false,
+        "confidential": false
+      }
+    },
+    "file_info": null,
+    "message": "please proceed with form"
+  }
+]

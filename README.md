@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Spike #001: AG-UI Protocol Evaluation
 
 ## Executive Summary
@@ -521,3 +522,6 @@ This research evaluated AG-UI across 7 critical parameters:
 **License:** MIT  
 **Version:** 1.0.0  
 **Status:** Production Ready
+=======
+
+>>>>>>> a71f280 (update)

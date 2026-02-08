@@ -1,0 +1,66 @@
+{
+    "test_scenarios": [
+        {
+            "name": "Short Query",
+            "prompt": "Hello",
+            "category": "streaming",
+            "expected_behavior": "Fast TTFT (<500ms)"
+        },
+        {
+            "name": "Medium Query",
+            "prompt": "Explain quantum computing in simple terms",
+            "category": "streaming",
+            "expected_behavior": "Smooth streaming"
+        },
+        {
+            "name": "Long Query",
+            "prompt": "Write a detailed 500-word essay about artificial intelligence",
+            "category": "streaming",
+            "expected_behavior": "Sustained throughput"
+        },
+        {
+            "name": "Math Calculation",
+            "prompt": "Calculate 123 * 456",
+            "category": "tool_invocation",
+            "expected_behavior": "Tool events visible"
+        },
+        {
+            "name": "Time Query",
+            "prompt": "What time is it?",
+            "category": "tool_invocation",
+            "expected_behavior": "Tool events visible"
+        },
+        {
+            "name": "Context Test 1",
+            "prompt": "My name is Alice",
+            "category": "state_sync",
+            "expected_behavior": "Store name in context"
+        },
+        {
+            "name": "Context Test 2",
+            "prompt": "What is my name?",
+            "category": "state_sync",
+            "expected_behavior": "Remember 'Alice'"
+        },
+        {
+            "name": "Empty Input",
+            "prompt": "",
+            "category": "error_handling",
+            "expected_behavior": "Graceful error message"
+        },
+        {
+            "name": "Very Long Input",
+            "prompt": "repeat x 5000 times",
+            "category": "error_handling",
+            "expected_behavior": "Handle or truncate gracefully"
+        }
+    ],
+    "success_thresholds": {
+        "ttft_ms": 500,
+        "throughput_tps": 40,
+        "context_accuracy_percent": 75,
+        "error_recovery_percent": 80,
+        "max_adapter_loc": 300,
+        "min_dx_rating": 4.0
+    }
+}
