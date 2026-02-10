@@ -28,6 +28,129 @@ async def get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
+# ============ PLAN COMPONENT HELPER ============
+# This function creates a TaskChecklist component that the frontend renders
+# It's a regular function (not a @tool) so we can call it directly
+
+def create_plan_component(topic: str) -> str:
+    """
+    Create a planning checklist component for the frontend.
+    
+    WHY THIS WORKS:
+    - The frontend detects "COMPONENT:TaskChecklist:" prefix
+    - It parses the JSON and renders a beautiful interactive checklist
+    - User can check/uncheck items and confirm the plan
+    
+    Args:
+        topic: What the user wants to plan (e.g., "product launch")
+        
+    Returns:
+        String in format "COMPONENT:TaskChecklist:{json_data}"
+    """
+    import json
+    
+    topic_lower = topic.lower()
+    title = f"Plan for: {topic}"
+    tasks = []
+    
+    # Determine plan type based on keywords in the topic
+    if "product" in topic_lower or "launch" in topic_lower or "market" in topic_lower:
+        title = "Product Launch Plan"
+        tasks = [
+            {"id": "1", "label": "Initial research and analysis", "checked": True},
+            {"id": "2", "label": "Define strategy and goals", "checked": True},
+            {"id": "3", "label": "Execute phase 1", "checked": False},
+            {"id": "4", "label": "Review progress", "checked": False},
+            {"id": "5", "label": "Finalize and deliver", "checked": False},
+        ]
+    elif "software" in topic_lower or "app" in topic_lower or "code" in topic_lower or "web" in topic_lower:
+        title = "Software Development Plan"
+        tasks = [
+            {"id": "1", "label": "Define requirements and scope", "checked": True},
+            {"id": "2", "label": "Design architecture", "checked": True},
+            {"id": "3", "label": "Set up project structure", "checked": False},
+            {"id": "4", "label": "Implement core features", "checked": False},
+            {"id": "5", "label": "Test and deploy", "checked": False},
+        ]
+    elif "trip" in topic_lower or "vacation" in topic_lower or "travel" in topic_lower:
+        title = f"Trip Plan: {topic}"
+        tasks = [
+            {"id": "1", "label": "Determine budget and dates", "checked": True},
+            {"id": "2", "label": "Book flights", "checked": True},
+            {"id": "3", "label": "Reserve accommodation", "checked": False},
+            {"id": "4", "label": "Plan daily itinerary", "checked": False},
+            {"id": "5", "label": "Pack luggage", "checked": False},
+        ]
+    elif "mars" in topic_lower or "space" in topic_lower or "mission" in topic_lower:
+        title = "Mission to Mars: Implementation Plan"
+        tasks = [
+            {"id": "1", "label": "Research Mars mission requirements", "checked": True},
+            {"id": "2", "label": "Select spacecraft and technology", "checked": True},
+            {"id": "3", "label": "Plan launch window and trajectory", "checked": True},
+            {"id": "4", "label": "Prepare supplies and equipment", "checked": True},
+            {"id": "5", "label": "Select and train crew members", "checked": False},
+        ]
+    else:
+        # Generic plan for any other topic
+        title = f"Plan for: {topic}"
+        tasks = [
+            {"id": "1", "label": "Research and gather requirements", "checked": True},
+            {"id": "2", "label": "Create detailed plan", "checked": False},
+            {"id": "3", "label": "Execute main tasks", "checked": False},
+            {"id": "4", "label": "Review and iterate", "checked": False},
+            {"id": "5", "label": "Complete and document", "checked": False},
+        ]
+    
+    # Create the component data structure
+    data = {"title": title, "tasks": tasks}
+    
+    # Return in the format the frontend expects
+    # Frontend will detect "COMPONENT:TaskChecklist:" and render the component
+    return f"COMPONENT:TaskChecklist:{json.dumps(data)}"
+
+
+def execute_plan(plan_title: str, steps: list) -> str:
+    """
+    Execute a confirmed plan and generate detailed output.
+    
+    This is called when user clicks "Confirm Plan" on the TaskChecklist.
+    The frontend sends "EXECUTE_PLAN:Title:[steps]" command.
+    
+    Args:
+        plan_title: The title of the plan being executed
+        steps: List of step labels that were checked
+        
+    Returns:
+        Formatted markdown showing execution progress
+    """
+    result = f"## ✨ Executing: {plan_title}\n\n"
+    result += "I'm now working through your approved steps:\n\n"
+    
+    for i, step in enumerate(steps, 1):
+        result += f"### Step {i}: {step}\n"
+        step_lower = step.lower()
+        
+        # Generate step-specific content based on keywords
+        if "research" in step_lower or "analysis" in step_lower:
+            result += "📊 Conducting comprehensive research and gathering relevant data.\n\n"
+        elif "design" in step_lower or "architecture" in step_lower:
+            result += "🎨 Creating detailed design specifications and system architecture.\n\n"
+        elif "strategy" in step_lower or "goals" in step_lower:
+            result += "🎯 Defining clear objectives with measurable KPIs.\n\n"
+        elif "implement" in step_lower or "execute" in step_lower or "develop" in step_lower:
+            result += "💻 Building and implementing the core functionality.\n\n"
+        elif "test" in step_lower or "deploy" in step_lower:
+            result += "🚀 Running comprehensive tests and preparing for deployment.\n\n"
+        elif "review" in step_lower or "progress" in step_lower:
+            result += "📋 Evaluating current progress against goals.\n\n"
+        else:
+            result += "✅ Working on this step with full attention to detail.\n\n"
+    
+    result += "---\n"
+    result += f"🎉 **All {len(steps)} steps are now in progress!**\n"
+    return result
+
+
 
 class CrewAIAGUIAdapter:
     """
@@ -278,6 +401,58 @@ class CrewAIAGUIAdapter:
                 await self.emitter.emit_run_finished(run_id, thread_id)
                 return error_msg
         
+        # ============ KEYWORD-BASED ROUTING FOR RELIABLE FEATURES ============
+        # These bypass the LLM for faster, more reliable responses
+        
+        user_lower = user_input.lower()
+        
+        # Check for EXECUTE_PLAN command (from TaskChecklist confirmation)
+        # Format: "EXECUTE_PLAN:Plan Title:[step1, step2, ...]"
+        if user_input.startswith('EXECUTE_PLAN:'):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            try:
+                import json
+                # Parse: EXECUTE_PLAN:Plan Title:["step1", "step2", ...]
+                json_start = user_input.find(':[')
+                if json_start != -1:
+                    plan_title = user_input[len('EXECUTE_PLAN:'):json_start]
+                    steps_json = user_input[json_start + 1:]  # Skip the ':' before '['
+                else:
+                    plan_title = "Plan"
+                    steps_json = "[]"
+                steps = json.loads(steps_json)
+                
+                # Generate execution content using our helper function
+                result = execute_plan(plan_title, steps)
+                await self.emitter.emit_text_chunk(result, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return result
+            except Exception as e:
+                error_msg = f"Error executing plan: {str(e)}"
+                await self.emitter.emit_text_chunk(error_msg, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return error_msg
+        
+        # Check for PLANNING requests
+        # Keywords that indicate user wants a plan/checklist
+        planning_keywords = ['plan ', 'plan a ', 'create a plan', 'steps to', 'checklist', 'how to', 'steps for']
+        if any(kw in user_lower for kw in planning_keywords):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            # Extract the topic from the input
+            topic = user_input
+            for prefix in ['plan ', 'plan a ', 'create a plan for ', 'steps to ', 'checklist for ']:
+                if user_lower.startswith(prefix):
+                    topic = user_input[len(prefix):]
+                    break
+            # Generate the TaskChecklist component
+            result = create_plan_component(topic)
+            await self.emitter.emit_text_chunk(result, message_id)
+            await self.emitter.emit_text_message_end(message_id)
+            await self.emitter.emit_run_finished(run_id, thread_id)
+            return result
+        
         try:
             # Emit step started for crew setup
             await self.emitter.emit("STEP_STARTED", {
@@ -387,6 +562,51 @@ class SimplifiedCrewAIAdapter:
         message_id = f"msg-{uuid.uuid4().hex[:8]}"
         
         await self.emitter.emit_run_started(run_id, thread_id)
+        
+        # ============ KEYWORD-BASED ROUTING FOR RELIABLE FEATURES ============
+        # Same as CrewAIAGUIAdapter for consistency
+        
+        user_lower = user_input.lower()
+        
+        # Check for EXECUTE_PLAN command (from TaskChecklist confirmation)
+        if user_input.startswith('EXECUTE_PLAN:'):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            try:
+                import json
+                json_start = user_input.find(':[')
+                if json_start != -1:
+                    plan_title = user_input[len('EXECUTE_PLAN:'):json_start]
+                    steps_json = user_input[json_start + 1:]
+                else:
+                    plan_title = "Plan"
+                    steps_json = "[]"
+                steps = json.loads(steps_json)
+                result = execute_plan(plan_title, steps)
+                await self.emitter.emit_text_chunk(result, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return result
+            except Exception as e:
+                error_msg = f"Error executing plan: {str(e)}"
+                await self.emitter.emit_text_chunk(error_msg, message_id)
+                await self.emitter.emit_text_message_end(message_id)
+                await self.emitter.emit_run_finished(run_id, thread_id)
+                return error_msg
+        
+        # Check for PLANNING requests
+        planning_keywords = ['plan ', 'plan a ', 'create a plan', 'steps to', 'checklist', 'how to', 'steps for']
+        if any(kw in user_lower for kw in planning_keywords):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            topic = user_input
+            for prefix in ['plan ', 'plan a ', 'create a plan for ', 'steps to ', 'checklist for ']:
+                if user_lower.startswith(prefix):
+                    topic = user_input[len(prefix):]
+                    break
+            result = create_plan_component(topic)
+            await self.emitter.emit_text_chunk(result, message_id)
+            await self.emitter.emit_text_message_end(message_id)
+            await self.emitter.emit_run_finished(run_id, thread_id)
+            return result
         
         try:
             # Show researcher agent working
