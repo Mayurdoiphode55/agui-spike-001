@@ -147,6 +147,48 @@ function getCurrentTime(): string {
     return `Current time: ${now.toISOString().replace('T', ' ').split('.')[0]}`;
 }
 
+// Document Search
+function createDocSearchComponent(query: string): string {
+    const docs = [
+        { title: "AG-UI Protocol Overview", snippet: "The AG-UI protocol defines a standard set of events for AI-to-UI communication. It enables framework-agnostic integration through events like RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, and UI_ACTION.", category: "architecture", keywords: ["agui", "protocol", "events", "overview", "architecture", "sse", "streaming"] },
+        { title: "REST API Endpoints Guide", snippet: "The backend exposes POST /api/copilotkit as the main endpoint. It accepts messages in JSON format and returns an SSE stream. Additional endpoints include GET /health and GET /api/adapters.", category: "api", keywords: ["api", "endpoints", "rest", "http", "post", "get", "routes", "copilotkit"] },
+        { title: "Adapter Pattern Implementation", snippet: "Adapters translate framework-specific events into AG-UI protocol events. Each adapter implements process_message() and emits standardized events through an EventEmitter.", category: "architecture", keywords: ["adapter", "pattern", "langchain", "mastra", "crewai", "implementation", "design"] },
+        { title: "Authentication & Security Guide", snippet: "API keys are managed through environment variables. CORS is configured to allow frontend origins. In production, implement rate limiting and token-based authentication.", category: "security", keywords: ["security", "authentication", "auth", "api key", "cors", "token", "rate limit"] },
+        { title: "Frontend Component Architecture", snippet: "The React frontend uses a hook-based architecture (useAGUI) to manage SSE connections. Components like WeatherCard, TaskChecklist, and DocSearchCard render structured data.", category: "frontend", keywords: ["frontend", "react", "component", "hook", "useagui", "state", "ui"] },
+        { title: "Database Schema & Data Models", snippet: "Currently uses in-memory data structures. For production, recommended PostgreSQL with conversation_logs, user_sessions tables. Use Redis for caching.", category: "database", keywords: ["database", "schema", "data", "model", "postgresql", "redis", "storage"] },
+        { title: "Deployment Guide", snippet: "Deploy Python backend with uvicorn behind nginx. Mastra runs on Node.js. Use Docker Compose for containerized deployment.", category: "deployment", keywords: ["deploy", "deployment", "docker", "production", "nginx", "uvicorn", "hosting"] },
+        { title: "UI Actions & Theme System", snippet: "AI can control UI through UI_ACTION events. Supported actions: changeBackgroundColor, changeTheme, showNotification, and resetUI.", category: "frontend", keywords: ["ui", "actions", "theme", "background", "notification", "dark mode", "light mode"] },
+        { title: "Testing & Quality Assurance", snippet: "Run unit tests with pytest for Python adapters. Frontend tests use Vitest and React Testing Library. Performance benchmarks evaluate 7 parameters.", category: "testing", keywords: ["testing", "test", "pytest", "vitest", "quality", "benchmark", "performance"] },
+        { title: "Event Emitter & SSE Streaming", snippet: "The EventEmitter class manages AG-UI event emission using asyncio queues. Events are serialized to JSON and sent as SSE data frames.", category: "architecture", keywords: ["event", "emitter", "sse", "streaming", "asyncio", "queue", "real-time"] },
+    ];
+
+    const queryLower = query.toLowerCase();
+    const queryWords = queryLower.split(/\s+/);
+    const scoredResults: { title: string; snippet: string; relevance: number; category: string }[] = [];
+
+    for (const doc of docs) {
+        let score = 0;
+        for (const word of queryWords) {
+            if (doc.title.toLowerCase().includes(word)) score += 30;
+            for (const kw of doc.keywords) {
+                if (word.includes(kw) || kw.includes(word)) score += 20;
+            }
+            if (doc.snippet.toLowerCase().includes(word)) score += 10;
+        }
+        if (score > 0) {
+            scoredResults.push({ title: doc.title, snippet: doc.snippet, relevance: Math.min(98, score), category: doc.category });
+        }
+    }
+
+    scoredResults.sort((a, b) => b.relevance - a.relevance);
+    const topResults = scoredResults.slice(0, 5);
+    if (topResults.length === 0) {
+        topResults.push({ title: "No Results Found", snippet: `No documents matching '${query}' found. Try 'API', 'deployment', 'security', 'architecture', or 'testing'.`, relevance: 0, category: "general" });
+    }
+
+    return `COMPONENT:DocSearchCard:${JSON.stringify({ query, results: topResults, totalFound: scoredResults.length })}`;
+}
+
 /**
  * Mastra AG-UI Adapter
  * Uses Vercel AI SDK with Groq for fast inference
@@ -238,6 +280,24 @@ export class MastraAGUIAdapter {
                 const locationMatch = userInput.match(/(?:weather in|weather like in|weather for|temperature in)\s+(.+?)(?:\?|$)/i);
                 const location = locationMatch ? locationMatch[1].trim() : 'Unknown';
                 const result = createWeatherComponent(location);
+                await this.emitter.emitTextChunk(result, messageId);
+                await this.emitter.emitTextMessageEnd(messageId);
+                await this.emitter.emitRunFinished(runId, threadId);
+                return result;
+            }
+
+            // Check for DOC SEARCH requests
+            const docSearchKeywords = ['search docs', 'doc search', 'search documentation', 'find docs', 'search for docs', 'search in docs'];
+            if (docSearchKeywords.some(kw => userLower.includes(kw))) {
+                await this.emitter.emitTextMessageStart(messageId, 'assistant');
+                let searchQuery = userInput;
+                for (const prefix of ['search docs for ', 'search docs ', 'doc search ', 'search documentation for ', 'find docs for ', 'find docs about ', 'search in docs for ']) {
+                    if (userLower.startsWith(prefix)) {
+                        searchQuery = userInput.substring(prefix.length);
+                        break;
+                    }
+                }
+                const result = createDocSearchComponent(searchQuery);
                 await this.emitter.emitTextChunk(result, messageId);
                 await this.emitter.emitTextMessageEnd(messageId);
                 await this.emitter.emitRunFinished(runId, threadId);

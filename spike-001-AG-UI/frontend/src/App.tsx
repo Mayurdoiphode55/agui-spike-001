@@ -231,6 +231,7 @@ function App() {
                                 <li>"Switch to light theme" / "Use dark mode"</li>
                                 <li>"Show a success notification saying Hello!"</li>
                                 <li>"Reset the UI to default"</li>
+                                <li>"Search docs for API" / "Doc search security"</li>
                             </ul>
                         </div>
 

@@ -229,6 +229,133 @@ def create_plan(topic: str) -> str:
 
 
 @tool
+def doc_search(query: str) -> str:
+    """
+    Search through project documentation and return matching results.
+    
+    Args:
+        query: The search query to find relevant documents
+    """
+    import json
+    
+    # Predefined knowledge base (simulated document database)
+    docs = [
+        {
+            "title": "AG-UI Protocol Overview",
+            "snippet": "The AG-UI protocol defines a standard set of events for AI-to-UI communication. It enables framework-agnostic integration through events like RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, and UI_ACTION. The protocol uses Server-Sent Events (SSE) for real-time streaming.",
+            "category": "architecture",
+            "keywords": ["agui", "protocol", "events", "overview", "architecture", "sse", "streaming"]
+        },
+        {
+            "title": "REST API Endpoints Guide",
+            "snippet": "The backend exposes POST /api/copilotkit as the main endpoint for AG-UI communication. It accepts messages in JSON format and returns an SSE stream of AG-UI events. Additional endpoints include GET /health for health checks and GET /api/adapters for listing available adapters.",
+            "category": "api",
+            "keywords": ["api", "endpoints", "rest", "http", "post", "get", "routes", "copilotkit"]
+        },
+        {
+            "title": "Adapter Pattern Implementation",
+            "snippet": "Adapters translate framework-specific events into AG-UI protocol events. Each adapter implements a process_message() method that receives user input and emits standardized events through an EventEmitter. Currently supported: LangChain, Mastra, and CrewAI adapters.",
+            "category": "architecture",
+            "keywords": ["adapter", "pattern", "langchain", "mastra", "crewai", "implementation", "design"]
+        },
+        {
+            "title": "Authentication & Security Guide",
+            "snippet": "API keys are managed through environment variables (GROQ_API_KEY). CORS is configured to allow frontend origins. In production, implement rate limiting, input validation, and token-based authentication. Never expose API keys in frontend code.",
+            "category": "security",
+            "keywords": ["security", "authentication", "auth", "api key", "cors", "token", "rate limit"]
+        },
+        {
+            "title": "Frontend Component Architecture",
+            "snippet": "The React frontend uses a hook-based architecture (useAGUI) to manage SSE connections and state. Components like WeatherCard, TaskChecklist, and DocSearchCard render structured data from COMPONENT: prefixed messages. The App component manages UI state for theme, background, and notifications.",
+            "category": "frontend",
+            "keywords": ["frontend", "react", "component", "hook", "useagui", "state", "ui"]
+        },
+        {
+            "title": "Database Schema & Data Models",
+            "snippet": "Currently uses in-memory data structures for conversation history and tool results. For production, recommended to integrate PostgreSQL with conversation_logs, user_sessions, and tool_executions tables. Use Redis for caching frequently accessed data.",
+            "category": "database",
+            "keywords": ["database", "schema", "data", "model", "postgresql", "redis", "storage"]
+        },
+        {
+            "title": "Deployment Guide",
+            "snippet": "Deploy the Python backend with uvicorn behind nginx. The Mastra TypeScript server runs on Node.js. Use Docker Compose for containerized deployment. Environment variables: GROQ_API_KEY, AGUI_ADAPTER, GROQ_MODEL. Health checks available at /health endpoint.",
+            "category": "deployment",
+            "keywords": ["deploy", "deployment", "docker", "production", "nginx", "uvicorn", "hosting"]
+        },
+        {
+            "title": "UI Actions & Theme System",
+            "snippet": "AI can control the UI through UI_ACTION events. Supported actions: changeBackgroundColor, changeTheme (dark/light), showNotification, and resetUI. Tools return UI_ACTION: prefixed strings that the backend converts to events for the frontend.",
+            "category": "frontend",
+            "keywords": ["ui", "actions", "theme", "background", "notification", "dark mode", "light mode"]
+        },
+        {
+            "title": "Testing & Quality Assurance",
+            "snippet": "Run unit tests with pytest for Python adapters. Frontend tests use Vitest and React Testing Library. Integration tests verify SSE event streaming end-to-end. Performance benchmarks evaluate 7 parameters including streaming speed and error handling.",
+            "category": "testing",
+            "keywords": ["testing", "test", "pytest", "vitest", "quality", "benchmark", "performance"]
+        },
+        {
+            "title": "Event Emitter & SSE Streaming",
+            "snippet": "The EventEmitter class manages AG-UI event emission using asyncio queues. Events are serialized to JSON and sent as SSE data frames. The frontend's useAGUI hook listens via EventSource and dispatches events to appropriate handlers for real-time UI updates.",
+            "category": "architecture",
+            "keywords": ["event", "emitter", "sse", "streaming", "asyncio", "queue", "real-time"]
+        },
+    ]
+    
+    query_lower = query.lower()
+    query_words = query_lower.split()
+    
+    # Score each document based on keyword matches
+    scored_results = []
+    for doc in docs:
+        score = 0
+        for word in query_words:
+            # Check title
+            if word in doc["title"].lower():
+                score += 30
+            # Check keywords
+            for kw in doc["keywords"]:
+                if word in kw or kw in word:
+                    score += 20
+            # Check snippet
+            if word in doc["snippet"].lower():
+                score += 10
+        
+        if score > 0:
+            # Cap at 98 to look realistic
+            relevance = min(98, score)
+            scored_results.append({
+                "title": doc["title"],
+                "snippet": doc["snippet"],
+                "relevance": relevance,
+                "category": doc["category"]
+            })
+    
+    # Sort by relevance (highest first)
+    scored_results.sort(key=lambda x: x["relevance"], reverse=True)
+    
+    # Take top 5 results
+    top_results = scored_results[:5]
+    
+    # If no results, return a message
+    if not top_results:
+        top_results = [{
+            "title": "No Results Found",
+            "snippet": f"No documents matching '{query}' were found. Try different search terms like 'API', 'deployment', 'security', 'architecture', or 'testing'.",
+            "relevance": 0,
+            "category": "general"
+        }]
+    
+    data = {
+        "query": query,
+        "results": top_results,
+        "totalFound": len(scored_results)
+    }
+    
+    return f"COMPONENT:DocSearchCard:{json.dumps(data)}"
+
+
+@tool
 def show_notification(message: str, notification_type: str = "info") -> str:
     """
     Show a notification message to the user in the UI.
@@ -583,6 +710,22 @@ class LangChainAGUIAdapter:
             location = location_match.group(1).strip() if location_match else "Unknown"
             # Call get_weather directly
             result = get_weather.invoke({"location": location})
+            await self.emitter.emit_text_chunk(result, message_id)
+            await self.emitter.emit_text_message_end(message_id)
+            await self.emitter.emit_run_finished(run_id, thread_id)
+            return result
+        
+        # Check for DOC SEARCH requests
+        if any(kw in user_lower for kw in ['search docs', 'doc search', 'search documentation', 'find docs', 'search for docs', 'search in docs']):
+            await self.emitter.emit_text_message_start(message_id, "assistant")
+            # Extract the query
+            import re
+            query = user_input
+            for prefix in ['search docs for ', 'search docs ', 'doc search ', 'search documentation for ', 'find docs for ', 'find docs about ', 'search in docs for ', 'search for docs about ']:
+                if user_lower.startswith(prefix):
+                    query = user_input[len(prefix):]
+                    break
+            result = doc_search.invoke({"query": query})
             await self.emitter.emit_text_chunk(result, message_id)
             await self.emitter.emit_text_message_end(message_id)
             await self.emitter.emit_run_finished(run_id, thread_id)

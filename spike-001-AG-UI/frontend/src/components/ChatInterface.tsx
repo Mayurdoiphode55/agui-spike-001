@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { AGUIMessage, FormData, FileData } from '../hooks/useAGUI';
 import WeatherCard from './WeatherCard';
 import TaskChecklist from './TaskChecklist';
+import DocSearchCard from './DocSearchCard';
 import FormInput from './FormInput';
 import FileUpload from './FileUpload';
 
@@ -134,6 +135,11 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                                 {msg.component && msg.component.type === 'TaskChecklist' && (
                                     <div className="mt-4 mb-4">
                                         <TaskChecklist data={msg.component.data} />
+                                    </div>
+                                )}
+                                {msg.component && msg.component.type === 'DocSearchCard' && (
+                                    <div className="mt-4 mb-4">
+                                        <DocSearchCard data={msg.component.data} />
                                     </div>
                                 )}
 
@@ -281,8 +287,8 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                                 if (showFileUpload) setShowFileUpload(false);
                             }}
                             className={`p-2 rounded-lg transition-all ${showForm || hasFormData
-                                    ? 'bg-primary-500/30 text-primary-300'
-                                    : 'text-gray-500 hover:text-white hover:bg-white/10'
+                                ? 'bg-primary-500/30 text-primary-300'
+                                : 'text-gray-500 hover:text-white hover:bg-white/10'
                                 }`}
                             title="Add form data"
                             disabled={isStreaming}
@@ -295,8 +301,8 @@ function ChatInterface({ messages, isStreaming, onSendMessage, onClear }: ChatIn
                                 if (showForm) setShowForm(false);
                             }}
                             className={`p-2 rounded-lg transition-all ${showFileUpload || fileData
-                                    ? 'bg-green-500/30 text-green-300'
-                                    : 'text-gray-500 hover:text-white hover:bg-white/10'
+                                ? 'bg-green-500/30 text-green-300'
+                                : 'text-gray-500 hover:text-white hover:bg-white/10'
                                 }`}
                             title="Attach file"
                             disabled={isStreaming}

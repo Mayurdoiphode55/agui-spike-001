@@ -148,6 +148,113 @@ function executePlan(planTitle: string, steps: string[]): string {
     return result;
 }
 
+// Document Search - knowledge base
+function createDocSearchComponent(query: string): string {
+    const docs = [
+        {
+            title: "AG-UI Protocol Overview",
+            snippet: "The AG-UI protocol defines a standard set of events for AI-to-UI communication. It enables framework-agnostic integration through events like RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, and UI_ACTION. The protocol uses Server-Sent Events (SSE) for real-time streaming.",
+            category: "architecture",
+            keywords: ["agui", "protocol", "events", "overview", "architecture", "sse", "streaming"]
+        },
+        {
+            title: "REST API Endpoints Guide",
+            snippet: "The backend exposes POST /api/copilotkit as the main endpoint for AG-UI communication. It accepts messages in JSON format and returns an SSE stream of AG-UI events. Additional endpoints include GET /health for health checks and GET /api/adapters for listing available adapters.",
+            category: "api",
+            keywords: ["api", "endpoints", "rest", "http", "post", "get", "routes", "copilotkit"]
+        },
+        {
+            title: "Adapter Pattern Implementation",
+            snippet: "Adapters translate framework-specific events into AG-UI protocol events. Each adapter implements a process_message() method that receives user input and emits standardized events through an EventEmitter. Currently supported: LangChain, Mastra, and CrewAI adapters.",
+            category: "architecture",
+            keywords: ["adapter", "pattern", "langchain", "mastra", "crewai", "implementation", "design"]
+        },
+        {
+            title: "Authentication & Security Guide",
+            snippet: "API keys are managed through environment variables (GROQ_API_KEY). CORS is configured to allow frontend origins. In production, implement rate limiting, input validation, and token-based authentication. Never expose API keys in frontend code.",
+            category: "security",
+            keywords: ["security", "authentication", "auth", "api key", "cors", "token", "rate limit"]
+        },
+        {
+            title: "Frontend Component Architecture",
+            snippet: "The React frontend uses a hook-based architecture (useAGUI) to manage SSE connections and state. Components like WeatherCard, TaskChecklist, and DocSearchCard render structured data from COMPONENT: prefixed messages. The App component manages UI state for theme, background, and notifications.",
+            category: "frontend",
+            keywords: ["frontend", "react", "component", "hook", "useagui", "state", "ui"]
+        },
+        {
+            title: "Database Schema & Data Models",
+            snippet: "Currently uses in-memory data structures for conversation history and tool results. For production, recommended to integrate PostgreSQL with conversation_logs, user_sessions, and tool_executions tables. Use Redis for caching frequently accessed data.",
+            category: "database",
+            keywords: ["database", "schema", "data", "model", "postgresql", "redis", "storage"]
+        },
+        {
+            title: "Deployment Guide",
+            snippet: "Deploy the Python backend with uvicorn behind nginx. The Mastra TypeScript server runs on Node.js. Use Docker Compose for containerized deployment. Environment variables: GROQ_API_KEY, AGUI_ADAPTER, GROQ_MODEL. Health checks available at /health endpoint.",
+            category: "deployment",
+            keywords: ["deploy", "deployment", "docker", "production", "nginx", "uvicorn", "hosting"]
+        },
+        {
+            title: "UI Actions & Theme System",
+            snippet: "AI can control the UI through UI_ACTION events. Supported actions: changeBackgroundColor, changeTheme (dark/light), showNotification, and resetUI. Tools return UI_ACTION: prefixed strings that the backend converts to events for the frontend.",
+            category: "frontend",
+            keywords: ["ui", "actions", "theme", "background", "notification", "dark mode", "light mode"]
+        },
+        {
+            title: "Testing & Quality Assurance",
+            snippet: "Run unit tests with pytest for Python adapters. Frontend tests use Vitest and React Testing Library. Integration tests verify SSE event streaming end-to-end. Performance benchmarks evaluate 7 parameters including streaming speed and error handling.",
+            category: "testing",
+            keywords: ["testing", "test", "pytest", "vitest", "quality", "benchmark", "performance"]
+        },
+        {
+            title: "Event Emitter & SSE Streaming",
+            snippet: "The EventEmitter class manages AG-UI event emission using asyncio queues. Events are serialized to JSON and sent as SSE data frames. The frontend's useAGUI hook listens via EventSource and dispatches events to appropriate handlers for real-time UI updates.",
+            category: "architecture",
+            keywords: ["event", "emitter", "sse", "streaming", "asyncio", "queue", "real-time"]
+        },
+    ];
+
+    const queryLower = query.toLowerCase();
+    const queryWords = queryLower.split(/\s+/);
+
+    // Score documents
+    const scoredResults: { title: string; snippet: string; relevance: number; category: string }[] = [];
+
+    for (const doc of docs) {
+        let score = 0;
+        for (const word of queryWords) {
+            if (doc.title.toLowerCase().includes(word)) score += 30;
+            for (const kw of doc.keywords) {
+                if (word.includes(kw) || kw.includes(word)) score += 20;
+            }
+            if (doc.snippet.toLowerCase().includes(word)) score += 10;
+        }
+        if (score > 0) {
+            scoredResults.push({
+                title: doc.title,
+                snippet: doc.snippet,
+                relevance: Math.min(98, score),
+                category: doc.category
+            });
+        }
+    }
+
+    // Sort by relevance
+    scoredResults.sort((a, b) => b.relevance - a.relevance);
+    const topResults = scoredResults.slice(0, 5);
+
+    if (topResults.length === 0) {
+        topResults.push({
+            title: "No Results Found",
+            snippet: `No documents matching '${query}' were found. Try different search terms like 'API', 'deployment', 'security', 'architecture', or 'testing'.`,
+            relevance: 0,
+            category: "general"
+        });
+    }
+
+    const data = { query, results: topResults, totalFound: scoredResults.length };
+    return `COMPONENT:DocSearchCard:${JSON.stringify(data)}`;
+}
+
 // Improve Recipe Logic
 function improveRecipe(recipeState: any): any {
     // Copy state
@@ -320,6 +427,22 @@ app.post('/api/copilotkit', async (req: Request, res: Response) => {
             }
         }
 
+        // Check for DOC SEARCH requests
+        if (!useKeywordResponse) {
+            const docSearchKeywords = ['search docs', 'doc search', 'search documentation', 'find docs', 'search for docs', 'search in docs'];
+            if (docSearchKeywords.some(kw => userLower.includes(kw))) {
+                let query = userInput;
+                for (const prefix of ['search docs for ', 'search docs ', 'doc search ', 'search documentation for ', 'find docs for ', 'find docs about ', 'search in docs for ']) {
+                    if (userLower.startsWith(prefix)) {
+                        query = userInput.substring(prefix.length);
+                        break;
+                    }
+                }
+                responseText = createDocSearchComponent(query);
+                useKeywordResponse = true;
+            }
+        }
+
         // Check for WEATHER requests
         if (!useKeywordResponse) {
             const weatherKeywords = ['weather in', 'weather like in', 'weather for', 'temperature in'];
@@ -456,7 +579,7 @@ app.get('/', (_req: Request, res: Response) => {
         version: '1.0.0',
         provider: 'Groq',
         model: modelId,
-        features: ['Weather Card', 'Planning Checklist', 'UI Actions', 'Time', 'Greetings', 'Shared State Recipes'],
+        features: ['Weather Card', 'Planning Checklist', 'Doc Search', 'UI Actions', 'Time', 'Greetings', 'Shared State Recipes'],
         uiActionsSupported: ['changeBackgroundColor', 'changeTheme', 'showNotification', 'resetUI', 'updateRecipeState']
     });
 });
