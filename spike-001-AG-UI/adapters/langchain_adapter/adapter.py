@@ -541,7 +541,7 @@ class LangChainAGUIAdapter:
                 if user_lower.startswith(prefix):
                     topic = user_input[len(prefix):]
                     break
-            result = create_plan(topic)
+            result = create_plan.invoke({"topic": topic})
             await self.emitter.emit_text_chunk(result, message_id)
             await self.emitter.emit_text_message_end(message_id)
             await self.emitter.emit_run_finished(run_id, thread_id)
