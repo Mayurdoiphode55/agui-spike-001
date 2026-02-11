@@ -60,7 +60,7 @@ npm install
 ### 1. Start Backend (Terminal 1)
 ```bash
 cd spike-001-AG-UI/backend
-python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+python server.py
 ```
 Server runs at: http://localhost:8000
 
@@ -74,7 +74,7 @@ Frontend runs at: http://localhost:5173
 ### 3. (Optional) Start Mastra Backend (Terminal 3)
 ```bash
 cd spike-001-AG-UI/adapters/mastra
-npx ts-node server.ts
+npm run dev
 ```
 Mastra server runs at: http://localhost:8001
 
