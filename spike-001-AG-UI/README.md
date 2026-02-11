@@ -492,11 +492,6 @@ This research evaluated AG-UI across 7 critical parameters:
 
 ---
 
-## 💬 Support & Contact
-
-**Research Team:** AI Research Team  
-**Email:** research@theoremlabs.io
-
 ### Getting Help
 
 1. Check [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for troubleshooting
@@ -534,10 +529,5 @@ This research evaluated AG-UI across 7 critical parameters:
 
 **Confidence: 80%** - Strong evidence, proven concept, clear path to production.
 
----
-
-**License:** MIT  
-**Version:** 1.0.0  
-**Status:** Production Ready
 =======
 
