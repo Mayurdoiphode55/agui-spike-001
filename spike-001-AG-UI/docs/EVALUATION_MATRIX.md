@@ -23,7 +23,7 @@ Complete scoring across all 7 evaluation parameters.
 
 | Metric | LangChain | Mastra | CrewAI |
 |--------|-----------|--------|--------|
-| Lines of Code | 180 | 140 | 200 |
+| Lines of Code | ~400 | ~400 | ~400 |
 | Dev Time (hrs) | 6 | 3 | 8 |
 | Complexity | Medium | Low | Medium-High |
 | **Score** | 9/10 | 10/10 | 8/10 |
