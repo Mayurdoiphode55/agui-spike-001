@@ -225,13 +225,15 @@ start_dev.bat
 # Manual start:
 # Terminal 1 - Backend
 cd backend
-python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+python server.py
 
 # Terminal 2 - Frontend
 cd frontend && npm run dev
 
 # Terminal 3 - Mastra (optional)
-cd adapters/mastra && npx ts-node server.ts
+cd adapters/mastra
+npm install
+npm run dev
 
 # Open browser: http://localhost:5173
 ```
@@ -250,7 +252,7 @@ set AGUI_ADAPTER=langchain
 set AGUI_ADAPTER=crewai
 
 # Then start the Python backend
-cd backend && python -m uvicorn server:app --port 8000
+cd backend && python server.py
 
 # Frontend requires NO changes! 🎉
 ```
