@@ -14,13 +14,11 @@ python --version
 node --version
 ```
 
-### 3. Ollama (Local LLM)
-1. Download from: https://ollama.com/download
-2. Install and start the service
-3. Pull the required model:
-```bash
-ollama pull llama3.1:8b
-```
+### 3. Groq API Key (Free)
+1. Go to: https://console.groq.com/keys
+2. Create a free account
+3. Generate an API key
+4. Copy it to your `.env` file
 
 ## Installation
 
@@ -59,29 +57,24 @@ npm install
 
 ## Running the Application
 
-### 1. Start Ollama
-```bash
-ollama serve
-```
-
-### 2. Start Backend (Terminal 1)
+### 1. Start Backend (Terminal 1)
 ```bash
 cd spike-001-AG-UI/backend
-python server.py
+python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 ```
 Server runs at: http://localhost:8000
 
-### 3. Start Frontend (Terminal 2)
+### 2. Start Frontend (Terminal 2)
 ```bash
 cd spike-001-AG-UI/frontend
 npm run dev
 ```
 Frontend runs at: http://localhost:5173
 
-### 4. (Optional) Start Mastra Backend (Terminal 3)
+### 3. (Optional) Start Mastra Backend (Terminal 3)
 ```bash
 cd spike-001-AG-UI/adapters/mastra
-npm run dev
+npx ts-node server.ts
 ```
 Mastra server runs at: http://localhost:8001
 
@@ -91,16 +84,18 @@ Mastra server runs at: http://localhost:8001
 Copy `.env.example` to `.env` and configure:
 
 ```env
-# LLM Configuration
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.1:8b
+# LLM Configuration (Groq API)
+# Get your key from: https://console.groq.com/keys
+GROQ_API_KEY=gsk_YOUR_API_KEY_HERE
+GROQ_MODEL=llama-3.1-8b-instant
 
 # Server Ports
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
+MASTRA_PORT=8001
 
-# Adapter Selection
-AGUI_ADAPTER=langchain  # Options: langchain, crewai
+# Active Adapter: langchain, crewai, or mastra
+AGUI_ADAPTER=langchain
 ```
 
 ## Switching Adapters
@@ -112,19 +107,15 @@ Use the UI dropdown to switch between:
 
 ## Troubleshooting
 
-### Ollama Not Responding
-```bash
-# Check if running
-curl http://localhost:11434/api/tags
-
-# Restart if needed
-ollama serve
-```
+### Groq API Error
+- Verify your `GROQ_API_KEY` is set correctly in `.env`
+- Check if your API key is valid at https://console.groq.com
+- Ensure you haven't exceeded the free tier rate limits
 
 ### Backend Connection Error
 1. Verify backend is running on port 8000
 2. Check CORS settings in server.py
-3. Verify Ollama is accessible
+3. Verify Groq API key is set in `.env`
 
 ### Frontend Build Errors
 ```bash
