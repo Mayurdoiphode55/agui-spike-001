@@ -116,15 +116,15 @@ app.add_middleware(
 )
 ```
 
-## WebSocket Configuration
+## SSE Configuration
 
-Update WebSocket connection URLs in frontend to use `wss://` instead of `ws://`:
+The application uses Server-Sent Events (SSE) for streaming. Update connection URLs in frontend for production:
 
 ```javascript
 // frontend/src/config.js or similar
-const WS_URL = import.meta.env.PROD 
-  ? 'wss://agui-backend.onrender.com/ws'
-  : 'ws://localhost:8000/ws';
+const API_URL = import.meta.env.PROD 
+  ? 'https://agui-backend.onrender.com'
+  : 'http://localhost:8000';
 ```
 
 ## Post-Deployment
@@ -172,7 +172,7 @@ const WS_URL = import.meta.env.PROD
 
 ### Frontend can't connect to backend
 - Verify CORS settings in backend
-- Check WebSocket URL uses `wss://`
+- Check API URL uses `https://` in production
 - Ensure environment variables are set
 
 ### Mastra adapter fails
@@ -200,8 +200,8 @@ const WS_URL = import.meta.env.PROD
 # Check deployment status
 curl https://agui-backend.onrender.com/health
 
-# Test WebSocket connection
-wscat -c wss://agui-backend.onrender.com/ws
+# Test SSE connection
+curl https://agui-backend.onrender.com/health
 
 # View logs in real-time
 # (Use Render dashboard Logs tab)
